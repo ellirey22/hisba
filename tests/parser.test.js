@@ -105,6 +105,18 @@ const cases = [
     text: 'شراء إنترنت\nبطاقة المسافر:**4188\nعبر: apple pay\nمبلغ:SAR 1,000\nمن:barq\nفي:12:29 2026-11-19\nالرصيد المتبقي:SAR 1',
     expect: { type: 'purchase', amount: 1000, merchant: 'barq', card: '4188', category: 'transfers' },
   },
+  {
+    name: 'حقيقي - تعبئة بطاقة المسافر (تحويل داخلي مستبعد)',
+    sender: 'alinma',
+    text: 'خصم مبلغ: SAR 3.84\nمن حساب: **2000\nإلى بطاقة المسافر: **4188\nفي: 19-11-2026 15:45:17\nالرصيد المتبقي: SAR 4.84',
+    expect: { type: 'transfer', excluded: true, amount: 3.84, bank: 'الإنماء', category: 'transfers' },
+  },
+  {
+    name: 'حقيقي - حوالة بين حساباتك',
+    sender: 'alinma',
+    text: 'حوالة بين حساباتك\nمن:*2001\nإلى:*2000\nمبلغ SAR 1,000\nفي 19-11-26 12:12',
+    expect: { type: 'transfer', excluded: true, amount: 1000 },
+  },
 ];
 
 let pass = 0;

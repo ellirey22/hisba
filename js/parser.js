@@ -56,8 +56,12 @@ const WITHDRAW = /(سحب|withdraw|atm|صراف)/i;
 const BILL = /(سداد|sadad|فاتورة|bill\s*payment|مدفوعات\s*حكومية|government)/i;
 const PURCHASE = /(شراء|purchase|\bpos\b|نقاط\s*البيع|مشتريات|خصم|debit|debited|دفع|paid|payment|pay|apple\s*pay|ابل\s*باي|mada\s*pay|online|انترنت|إنترنت|spent|charged)/i;
 
+// تحويل بين حساباتك أو تعبئة بطاقتك (مثل بطاقة المسافر): مو صرف، ينستبعد من الإحصائيات تلقائياً
+const OWN_TRANSFER = /(بين\s*حساباتك|بين\s*حساباتي|own\s*accounts?|إلى\s*بطاقة|الى\s*بطاقة|to\s*(?:your\s*)?card|تعبئة\s*(?:رصيد\s*)?بطاقة|شحن\s*بطاقة|card\s*top[-\s]?up)/i;
+
 function detectType(t) {
   if (IGNORE.test(t)) return null;
+  if (OWN_TRANSFER.test(t)) return 'internal';
   if (/(استرداد|refund|reversal|cashback)/i.test(t)) return 'income';
   // "شراء" لها الأولوية على "واردة" وغيرها
   if (/(شراء|purchase|\bpos\b|نقاط\s*البيع)/i.test(t)) return 'purchase';
@@ -246,6 +250,15 @@ export function parseSMS(raw, opts = {}) {
   // لو التاريخ المستخرج بعيد جداً عن وقت الاستلام والرسالة جاية من الاختصار، نعتمد وقت الاستلام
   const useDate = date && (!opts.receivedAt || Math.abs(now - date) < 3 * 864e5) ? date : now;
 
+  if (type === 'internal') {
+    const to = text.match(/(?:إلى|الى|to)\s*[:\-]?\s*(بطاقة[^:\n]*|[^\n:]*card[^:\n]*)?[:\s]*[*xX•]*\s*(\d{4})/i);
+    return {
+      type: 'transfer', internal: true, excluded: true, amount: amt.amount, currency: amt.currency,
+      merchant: to ? `تحويل لـ${(to[1] || 'حسابك').trim()} •${to[2]}` : 'تحويل بين حساباتك',
+      card: extractCard(text), bank: detectBank(text, opts.sender || ''), channel: '',
+      date: useDate.toISOString(), raw: String(raw).trim(), confidence: 'high',
+    };
+  }
   return {
     type: type === 'unknown' ? 'purchase' : type,
     amount: amt.amount,
