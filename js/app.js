@@ -314,8 +314,8 @@ function renderSettings() {
   view.innerHTML = `
     <div class="card"><h2>⚡ ربط اختصارات الآيفون</h2>
       <p class="small muted">iOS ما يسمح لأي تطبيق يقرأ الرسائل مباشرة، فنستخدم «أتمتة» في تطبيق الاختصارات تمرّر رسالة البنك لحِسبَة تلقائياً.</p>
-      <div class="seg" id="mode-seg"><button class="active" data-mode="file">الطريقة الصامتة (مستحسنة)</button><button data-mode="url">الطريقة الفورية</button></div>
-      <div id="mode-file">
+      <div class="seg" id="mode-seg"><button class="active" data-mode="url">الطريقة الفورية</button><button data-mode="file">الطريقة الصامتة</button></div>
+      <div id="mode-file" hidden>
         <ol class="steps small">
           <li>افتح <b>الاختصارات</b> ← <b>الأتمتة</b> ← <b>＋</b> ← <b>الرسالة</b>.</li>
           <li>في <b>المرسل</b> اختر اسم البنك (تقدر تسوي أتمتة لكل بنك)، واختر <b>تشغيل فوراً</b>.</li>
@@ -326,7 +326,7 @@ function renderSettings() {
         <label class="btn primary block">📥 استيراد رسائل من ملف<input type="file" id="import-file" accept=".txt,text/plain" hidden></label>
         <p class="small muted">ميزة هالطريقة: ما يفتح شي كل ما وصلتك رسالة، والتطبيق يشتغل من الشاشة الرئيسية.</p>
       </div>
-      <div id="mode-url" hidden>
+      <div id="mode-url">
         <ol class="steps small">
           <li>نفس الخطوة ١ و٢ فوق (أتمتة ← الرسالة ← المرسل: البنك ← تشغيل فوراً).</li>
           <li>أضف إجراء <b>ترميز URL</b> على متغيّر <b>الرسالة</b>.</li>
