@@ -1,5 +1,5 @@
 // يخلي التطبيق يشتغل بدون إنترنت. غيّر رقم النسخة لما تعدّل الملفات.
-const CACHE = 'hisba-v20';
+const CACHE = 'hisba-v21';
 const ASSETS = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'js/app.js', 'js/store.js', 'js/parser.js',
   'js/categories.js', 'js/insights.js', 'js/charts.js', 'js/budget.js', 'js/icons.js', 'js/rates.js', 'fonts/noto-arabic.woff2', 'fonts/noto-latin.woff2', 'icons/icon-512.png', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 

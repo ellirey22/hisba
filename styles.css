@@ -60,11 +60,11 @@ a { color: var(--brand); }
 
 /* ---------- الشريط العلوي: تحية صغيرة بدل عنوان كبير ---------- */
 .topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: calc(env(safe-area-inset-top) + 6px) 18px 8px; transition: padding .3s var(--ease), background .3s, box-shadow .3s; }
+  padding: calc(env(safe-area-inset-top) + 28px) 18px 8px; transition: padding .3s var(--ease), background .3s, box-shadow .3s; }
 .greet { min-width: 0; }
 .greet-t { font-size: 21px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: font-size .3s var(--ease); }
 .greet-s { font-size: 13px; color: var(--text-2); font-weight: 500; max-height: 20px; overflow: hidden; transition: max-height .3s var(--ease), opacity .3s; }
-.topbar.scrolled { padding-top: calc(env(safe-area-inset-top) + 8px); padding-bottom: 8px; background: var(--glass);
+.topbar.scrolled { padding-top: calc(env(safe-area-inset-top) + 26px); padding-bottom: 8px; background: var(--glass);
   -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); box-shadow: 0 .5px 0 var(--sep); }
 .topbar.scrolled .greet-t, .topbar.is-tab .greet-t { font-size: 18px; }
 .topbar.is-tab .greet-s { display: none; } .topbar.scrolled .greet-s { max-height: 0; opacity: 0; }
