@@ -45,7 +45,7 @@ const base = (extra = {}) => ({
   commitments: [{ id: 'c1', name: 'إيجار', amount: 2700, day: 1, kind: 'rent' }],
   bucketRules: {},
 });
-// الدورة ٢٧ أكتوبر – ٢٥ نوفمبر = ٣٠ يوم (راتب نوفمبر ينزل الخميس ٢٦) ← (10000-2700-1000-1000)/30
+// الدورة ٢٧ أكتوبر – ٢٥ نوفمبر = ٣٠ يوم ← (10000-2700-1000)/30 (ما فيه ميزانية مشتريات شهرية)
 t('الحد اليومي التلقائي والترحيل', () => {
   const st = base();
   const txs = [
@@ -55,9 +55,9 @@ t('الحد اليومي التلقائي والترحيل', () => {
   ];
   const r = today(st, txs, D('2026-10-29T18:00'));
   assert.equal(r.plan.days, 30);
-  assert.ok(Math.abs(r.plan.daily - 5300 / 30) < 0.01);
-  assert.ok(Math.abs(r.carry - (2 * 5300 / 30 - 100)) < 0.01, 'carry ' + r.carry);
-  assert.ok(Math.abs(r.remainingToday - (3 * 5300 / 30 - 150)) < 0.01);
+  assert.ok(Math.abs(r.plan.daily - 6300 / 30) < 0.01);
+  assert.ok(Math.abs(r.carry - (2 * 6300 / 30 - 100)) < 0.01, 'carry ' + r.carry);
+  assert.ok(Math.abs(r.remainingToday - (3 * 6300 / 30 - 150)) < 0.01);
   assert.equal(r.monthlySpent, 300);
 });
 t('بدون ترحيل', () => {

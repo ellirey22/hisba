@@ -1,7 +1,8 @@
 // تخزين محلي بالكامل على الجهاز (localStorage) — ما فيه أي خادم ولا حساب
 import { categorize, normalizeMerchant } from './categories.js';
 import { parseSMS } from './parser.js';
-import { matchCommitment, matchInvestment, commitmentSignature } from './budget.js';
+import { matchCommitment, matchInvestment, commitmentSignature, cycleFor } from './budget.js';
+import { DEFAULT_RATES } from './rates.js';
 
 const KEY = 'hisba.v1';
 
@@ -16,12 +17,12 @@ const defaults = () => ({
   bucketRules: {},    // اسم التاجر ← daily | monthly (تتعلّمها من اختياراتك)
   archive: [],        // لقطة لكل دورة راتب منتهية (الراتب والحد وقتها)
   seen: [],           // بصمات الرسائل عشان ما تنضاف مرتين
-  settings: { budget: { salary: 0, payday: 27, savings: 0, monthlyBudget: 0, dailyOverride: 0, rollover: true }, rates: { USD: 3.75, EUR: 4.05, GBP: 4.75, AED: 1.02, EGP: 0.08, TRY: 0.11 }, dismissedSubs: [] },
+  settings: { name: 'آلاء', theme: 'blue', mode: 'auto', budget: { salary: 0, payday: 27, savings: 0, dailyOverride: 0, rollover: true }, rates: { ...DEFAULT_RATES }, ratesUpdated: 0, dismissedSubs: [] },
 });
 
 function mergeSettings(st = {}) {
   const d = defaults().settings;
-  return { ...d, ...st, budget: { ...d.budget, ...(st.budget || {}) }, rates: { ...d.rates, ...(st.rates || {}) } };
+  return { ...d, ...st, budget: { ...d.budget, ...(st.budget || {}) }, rates: { ...d.rates, ...(st.rates || {}) }, name: st.name ?? d.name };
 }
 
 let state = load();
@@ -161,7 +162,21 @@ export function removeUnparsed(id) { state.unparsed = state.unparsed.filter((u) 
 export function dismissSub(key) { state.settings.dismissedSubs.push(key); save(); }
 
 // ---------- الميزانية والالتزامات ----------
-export function updateBudget(patch) { state.settings.budget = { ...state.settings.budget, ...patch }; save(); }
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** أول راتب جاي (أو اليوم لو اليوم يوم الراتب) — منه تبدأ الحسبة تلقائياً */
+export function nextPayday(payday, now = new Date()) {
+  const cur = cycleFor(now, payday);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return +today <= +cur.start ? cur.start : cycleFor(now, payday, 1).start;
+}
+export function updateBudget(patch) {
+  const b = { ...state.settings.budget, ...patch };
+  delete b.monthlyBudget;
+  // أول مرة تحدد فيها الراتب: الحسبة تبدأ لحالها من أول راتب جاي
+  if (b.salary > 0 && !b.startDate) b.startDate = ymd(nextPayday(b.payday || 27));
+  state.settings.budget = b;
+  save();
+}
 
 export function saveCommitment(c) {
   let saved;
@@ -348,6 +363,12 @@ export function archiveCycle(snap) {
 }
 
 export function exportJSON() { return JSON.stringify(state, null, 2); }
+/** يفحص نص هل هو نسخة احتياطية لحِسبَة؟ يرجع ملخصها أو null */
+export function inspectBackup(text) {
+  const t = String(text || '').trim();
+  if (t[0] !== '{' || !t.includes('"txs"')) return null;
+  try { const s = JSON.parse(t); return Array.isArray(s.txs) ? { txs: s.txs.length, debts: (s.debts || []).length, commitments: (s.commitments || []).length } : null; } catch { return null; }
+}
 export function importJSON(json) {
   const s = JSON.parse(json);
   if (!s || !Array.isArray(s.txs)) throw new Error('ملف النسخة الاحتياطية غير صالح');

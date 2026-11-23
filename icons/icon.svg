@@ -1,15 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#0f5e57"/></linearGradient>
-    <filter id="s" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#042f2c" flood-opacity=".35"/></filter>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26334f"/><stop offset="1" stop-color="#0a101d"/></linearGradient>
+    <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fd0ff"/><stop offset="1" stop-color="#0a84ff"/></linearGradient>
+    <radialGradient id="gl" cx=".5" cy=".12" r=".8"><stop offset="0" stop-color="#5aa9ff" stop-opacity=".28"/><stop offset="1" stop-color="#5aa9ff" stop-opacity="0"/></radialGradient>
   </defs>
-  <rect width="512" height="512" fill="url(#g)"/>
-  <g transform="translate(256 256) scale(1.12) translate(-256 -250)">
-    <path filter="url(#s)" d="M150 108 h212 a22 22 0 0 1 22 22 v262 l-26.5 -20 -26.5 20 -26.5 -20 -26.5 20 -26.5 -20 -26.5 20 -26.5 -20 -26.5 20 -26.5 -20 V130 a22 22 0 0 1 22 -22z" fill="#fff"/>
-    <rect x="178" y="150" width="76" height="16" rx="8" fill="#d1d5db"/>
-    <rect x="178" y="180" width="46" height="16" rx="8" fill="#e5e7eb"/>
-    <rect x="178" y="250" width="40" height="90" rx="14" fill="#99f6e4"/>
-    <rect x="236" y="206" width="40" height="134" rx="14" fill="#2dd4bf"/>
-    <rect x="294" y="160" width="40" height="180" rx="14" fill="#0f766e"/>
-  </g>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#gl)"/>
+  <circle cx="256" cy="256" r="148" fill="none" stroke="#fff" stroke-opacity=".1" stroke-width="42"/>
+  <circle cx="256" cy="256" r="148" fill="none" stroke="url(#rg)" stroke-width="42" stroke-linecap="round" stroke-dasharray="670 930" transform="rotate(-90 256 256)"/>
+  <text x="256" y="288" font-family="'Noto Sans Arabic', 'SF Arabic', Arial, sans-serif" font-size="150" font-weight="700" fill="#fff" text-anchor="middle">ح</text>
 </svg>
