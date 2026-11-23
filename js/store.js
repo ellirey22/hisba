@@ -9,9 +9,17 @@ const defaults = () => ({
   rules: {},          // اسم التاجر بعد التطبيع ← التصنيف (يتعلّمها التطبيق من تصحيحاتك)
   cards: {},          // "البنك|آخر4" ← { nickname, hidden }
   unparsed: [],       // رسائل ما قدر يقرأها، تقدر تضيفها يدوياً
+  commitments: [],    // الالتزامات الشهرية: إيجار، فواتير، أقساط تابي/تمارا، قروض
+  bucketRules: {},    // اسم التاجر ← daily | monthly (تتعلّمها من اختياراتك)
+  archive: [],        // لقطة لكل دورة راتب منتهية (الراتب والحد وقتها)
   seen: [],           // بصمات الرسائل عشان ما تنضاف مرتين
-  settings: { rates: { USD: 3.75, EUR: 4.05, GBP: 4.75, AED: 1.02, EGP: 0.08, TRY: 0.11 }, dismissedSubs: [] },
+  settings: { budget: { salary: 0, payday: 27, savings: 0, monthlyBudget: 0, dailyOverride: 0, rollover: true }, rates: { USD: 3.75, EUR: 4.05, GBP: 4.75, AED: 1.02, EGP: 0.08, TRY: 0.11 }, dismissedSubs: [] },
 });
+
+function mergeSettings(st = {}) {
+  const d = defaults().settings;
+  return { ...d, ...st, budget: { ...d.budget, ...(st.budget || {}) }, rates: { ...d.rates, ...(st.rates || {}) } };
+}
 
 let state = load();
 const listeners = new Set();
@@ -19,7 +27,7 @@ const listeners = new Set();
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && Array.isArray(s.txs)) return { ...defaults(), ...s, settings: { ...defaults().settings, ...s.settings } };
+    if (s && Array.isArray(s.txs)) return { ...defaults(), ...s, settings: mergeSettings(s.settings) };
   } catch { /* بيانات تالفة: نبدأ من جديد */ }
   return defaults();
 }
@@ -145,11 +153,44 @@ export function updateSettings(patch) { state.settings = { ...state.settings, ..
 export function removeUnparsed(id) { state.unparsed = state.unparsed.filter((u) => u.id !== id); save(); }
 export function dismissSub(key) { state.settings.dismissedSubs.push(key); save(); }
 
+// ---------- الميزانية والالتزامات ----------
+export function updateBudget(patch) { state.settings.budget = { ...state.settings.budget, ...patch }; save(); }
+
+export function saveCommitment(c) {
+  if (c.id) state.commitments = state.commitments.map((x) => (x.id === c.id ? { ...x, ...c } : x));
+  else state.commitments.push({ ...c, id: uid() });
+  save();
+}
+export function deleteCommitment(id) { state.commitments = state.commitments.filter((c) => c.id !== id); save(); }
+
+/** يحدد نوع الصرف (يومي/شهري) لعملية، ولو طلب المستخدم يتذكّره للتاجر */
+export function setBucket(id, bucket, remember = true) {
+  const t = state.txs.find((x) => x.id === id);
+  if (!t) return 0;
+  t.bucket = bucket;
+  let n = 1;
+  const key = normalizeMerchant(t.merchant);
+  if (remember && key) {
+    state.bucketRules[key] = bucket;
+    for (const o of state.txs) if (o !== t && !o.bucket && normalizeMerchant(o.merchant) === key) n++;
+  }
+  save();
+  return n;
+}
+export function deleteBucketRule(key) { delete state.bucketRules[key]; save(); }
+
+/** يحفظ لقطة للدورات المنتهية عشان التقرير يعرض الراتب والحد اللي كانوا وقتها */
+export function archiveCycle(snap) {
+  if (state.archive.some((a) => a.start === snap.start)) return;
+  state.archive.unshift(snap);
+  save();
+}
+
 export function exportJSON() { return JSON.stringify(state, null, 2); }
 export function importJSON(json) {
   const s = JSON.parse(json);
   if (!s || !Array.isArray(s.txs)) throw new Error('ملف النسخة الاحتياطية غير صالح');
-  state = { ...defaults(), ...s, settings: { ...defaults().settings, ...s.settings } };
+  state = { ...defaults(), ...s, settings: mergeSettings(s.settings) };
   save();
 }
 export function wipe() { state = defaults(); save(); }

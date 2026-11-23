@@ -1,7 +1,7 @@
 // يخلي التطبيق يشتغل بدون إنترنت. غيّر رقم النسخة لما تعدّل الملفات.
-const CACHE = 'hisba-v5';
+const CACHE = 'hisba-v6';
 const ASSETS = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'js/app.js', 'js/store.js', 'js/parser.js',
-  'js/categories.js', 'js/insights.js', 'js/charts.js', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
+  'js/categories.js', 'js/insights.js', 'js/charts.js', 'js/budget.js', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

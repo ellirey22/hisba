@@ -37,14 +37,17 @@ export function donut(items, { size = 200, thickness = 26, center = '' , sub = '
 }
 
 // أعمدة (يومي/شهري)
-export function bars(data, { height = 150, labelEvery = 1, highlight = -1, color = 'var(--accent)' } = {}) {
+export function bars(data, { height = 150, labelEvery = 1, highlight = -1, color = 'var(--accent)', limit = 0 } = {}) {
   const w = 340, padB = 22, padT = 16;
   const svg = el('svg', { viewBox: `0 0 ${w} ${height}`, class: 'bars', role: 'img' });
-  const max = Math.max(...data.map((d) => d.value), 1);
+  const max = Math.max(...data.map((d) => d.value), limit * 1.1, 1);
   const bw = w / data.length;
   // خط المتوسط
   const avg = data.reduce((s, d) => s + d.value, 0) / (data.length || 1);
-  if (avg > 0) {
+  if (limit > 0) {
+    const y = height - padB - (limit / max) * (height - padB - padT);
+    el('line', { x1: 0, x2: w, y1: y, y2: y, class: 'limit-line' }, svg);
+  } else if (avg > 0) {
     const y = height - padB - (avg / max) * (height - padB - padT);
     el('line', { x1: 0, x2: w, y1: y, y2: y, class: 'avg-line' }, svg);
   }
@@ -54,7 +57,7 @@ export function bars(data, { height = 150, labelEvery = 1, highlight = -1, color
     const h = (d.value / max) * (height - padB - padT);
     const rect = el('rect', {
       x, y: height - padB - h, width: bw * 0.64, height: Math.max(h, d.value > 0 ? 2 : 0), rx: 3,
-      fill: i === highlight ? 'var(--accent-strong)' : color,
+      fill: i === highlight ? 'var(--accent-strong)' : limit > 0 && d.value > limit ? 'var(--danger)' : color,
     }, svg);
     el('title', {}, rect).textContent = `${d.label}: ${fmt(d.value)}`;
     if (i % labelEvery === 0 || i === data.length - 1) {

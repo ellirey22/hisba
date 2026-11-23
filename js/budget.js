@@ -1,0 +1,277 @@
+// الميزانية: دورة الراتب، الحد اليومي مع الترحيل، الالتزامات، تقارير الدورة، والعادات
+import { normalizeMerchant } from './categories.js';
+import { sar } from './insights.js';
+
+const DAY = 864e5;
+const dim = (y, m) => new Date(y, m + 1, 0).getDate();
+const atPayday = (y, m, payday) => new Date(y, m, Math.min(payday, dim(y, m)));
+const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+// ---------------- دورة الراتب ----------------
+/** الدورة اللي فيها التاريخ: من يوم الراتب لين اليوم اللي قبل الراتب الجاي. offset = -1 للدورة السابقة */
+export function cycleFor(date = new Date(), payday = 27, offset = 0) {
+  const d = midnight(date);
+  let start = atPayday(d.getFullYear(), d.getMonth(), payday);
+  if (d < start) start = atPayday(d.getFullYear(), d.getMonth() - 1, payday);
+  start = atPayday(start.getFullYear(), start.getMonth() + offset, payday);
+  const end = atPayday(start.getFullYear(), start.getMonth() + 1, payday);
+  return { start, end, days: Math.round((end - start) / DAY) };
+}
+
+// ---------------- نوع الصرف لكل عملية ----------------
+// daily = من الحد اليومي · monthly = من ميزانية المشتريات الشهرية · commitment = سداد التزام
+export function counts(tx) { return tx.type !== 'income' && !tx.excluded; }
+
+export function bucketOf(tx, state) {
+  if (tx.bucket) return tx.bucket;
+  const key = normalizeMerchant(tx.merchant);
+  if (key && state.bucketRules?.[key]) return state.bucketRules[key];
+  if (matchCommitment(tx, state.commitments)) return 'commitment';
+  if (tx.type === 'bill' || tx.type === 'transfer') return 'monthly';
+  return 'daily';
+}
+
+export function matchCommitment(tx, commitments = []) {
+  const m = normalizeMerchant(tx.merchant);
+  if (!m) return null;
+  return commitments.find((c) => {
+    const k = normalizeMerchant(c.keyword || '');
+    return k && (m === k || m.includes(k));
+  }) || null;
+}
+
+// ---------------- الالتزامات ----------------
+export const COMMITMENT_KINDS = {
+  rent: { name: 'إيجار', icon: '🏠' },
+  bill: { name: 'فاتورة', icon: '🧾' },
+  installment: { name: 'تقسيط (تابي/تمارا)', icon: '🧩' },
+  loan: { name: 'قرض', icon: '🏦' },
+  subscription: { name: 'اشتراك', icon: '🔁' },
+  other: { name: 'أخرى', icon: '📌' },
+};
+
+/** حالة الالتزام: كم قسط انسدد، كم باقي، موعد الدفعة الجاية */
+export function commitmentStatus(c, now = new Date()) {
+  const day = c.day || 1;
+  const today = midnight(now);
+  let next = new Date(today.getFullYear(), today.getMonth(), Math.min(day, dim(today.getFullYear(), today.getMonth())));
+  if (next < today) next = new Date(today.getFullYear(), today.getMonth() + 1, Math.min(day, dim(today.getFullYear(), today.getMonth() + 1)));
+  const finite = (c.kind === 'installment' || c.kind === 'loan') && c.total > 0 && c.startDate;
+  if (!finite) return { active: true, next, paid: null, remaining: null, remainingAmount: null };
+  const s = new Date(c.startDate);
+  let paid = 0;
+  for (let i = 0; i < c.total; i++) {
+    const due = new Date(s.getFullYear(), s.getMonth() + i, Math.min(s.getDate(), dim(s.getFullYear(), s.getMonth() + i)));
+    if (due <= today) paid++;
+  }
+  const remaining = c.total - paid;
+  const last = new Date(s.getFullYear(), s.getMonth() + c.total - 1, s.getDate());
+  const nextDue = remaining > 0 ? new Date(s.getFullYear(), s.getMonth() + paid, Math.min(s.getDate(), dim(s.getFullYear(), s.getMonth() + paid))) : null;
+  return { active: remaining > 0, next: nextDue, paid, remaining, remainingAmount: remaining * c.amount, endDate: last };
+}
+
+export function commitmentsTotal(commitments = [], now = new Date()) {
+  return commitments.filter((c) => commitmentStatus(c, now).active).reduce((a, c) => a + (+c.amount || 0), 0);
+}
+
+// ---------------- الخطة والحد اليومي ----------------
+export function plan(state, now = new Date()) {
+  const b = state.settings.budget || {};
+  if (!(b.salary > 0)) return null;
+  const cyc = cycleFor(now, b.payday || 27);
+  const commitments = commitmentsTotal(state.commitments, now);
+  const savings = +b.savings || 0;
+  const monthlyBudget = +b.monthlyBudget || 0;
+  const forDaily = b.salary - commitments - savings - monthlyBudget;
+  const autoDaily = Math.max(forDaily / cyc.days, 0);
+  const daily = b.dailyOverride > 0 ? +b.dailyOverride : autoDaily;
+  return { ...cyc, salary: +b.salary, commitments, savings, monthlyBudget, forDaily, autoDaily, daily, rollover: b.rollover !== false };
+}
+
+/** وضع اليوم: الحد مع الترحيل، اللي انصرف، المتبقي، وكم باقي للدورة */
+export function today(state, txs, now = new Date()) {
+  const p = plan(state, now);
+  if (!p) return null;
+  const rates = state.settings.rates;
+  const n = p.days;
+  const perDay = new Array(n).fill(0);
+  let monthlySpent = 0, commitmentPaid = 0, total = 0;
+  for (const t of txs) {
+    if (!counts(t)) continue;
+    const d = new Date(t.date);
+    if (d < p.start || d >= p.end) continue;
+    const v = sar(t, rates);
+    total += v;
+    const bk = bucketOf(t, state);
+    if (bk === 'daily') perDay[Math.floor((midnight(d) - p.start) / DAY)] += v;
+    else if (bk === 'monthly') monthlySpent += v;
+    else commitmentPaid += v;
+  }
+  const idx = Math.min(Math.floor((midnight(now) - p.start) / DAY), n - 1);
+  const spentBefore = perDay.slice(0, idx).reduce((a, x) => a + x, 0);
+  const carry = p.rollover ? p.daily * idx - spentBefore : 0;
+  const allowance = p.daily + carry;
+  const spentToday = perDay[idx];
+  const dailySpent = perDay.reduce((a, x) => a + x, 0);
+  const daysLeft = n - idx; // مع اليوم
+  const dailyLeft = p.daily * n - dailySpent;
+  return {
+    plan: p, idx, perDay, carry, allowance, spentToday, remainingToday: allowance - spentToday,
+    over: spentToday > allowance, dailySpent, monthlySpent, commitmentPaid, total,
+    daysLeft, dailyLeft, suggestedDaily: Math.max((dailyLeft + spentToday) / daysLeft, 0),
+    leftOfSalary: p.salary - total - (p.commitments - commitmentPaid > 0 ? p.commitments - commitmentPaid : 0),
+    daysOver: perDay.slice(0, idx + 1).filter((x) => x > p.daily).length,
+  };
+}
+
+// ---------------- تقرير دورة ----------------
+const TIME_SLOTS = [
+  ['الصباح', 5, 12], ['الظهر والعصر', 12, 17], ['المساء', 17, 22], ['آخر الليل', 22, 29],
+];
+const slotOf = (h) => (TIME_SLOTS.find(([, a, b]) => (h >= a && h < b) || (h + 24 >= a && h + 24 < b)) || TIME_SLOTS[3])[0];
+export const WEEKDAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+export function cycleReport(state, txs, range, dailyLimit = 0) {
+  const rates = state.settings.rates;
+  const list = txs.filter((t) => { const d = new Date(t.date); return d >= range.start && d < range.end; });
+  const exp = list.filter(counts);
+  const v = (t) => sar(t, rates);
+  const total = exp.reduce((a, t) => a + v(t), 0);
+  const income = list.filter((t) => t.type === 'income').reduce((a, t) => a + v(t), 0);
+
+  const group = (keyFn, labelFn) => {
+    const m = {};
+    for (const t of exp) {
+      const k = keyFn(t); if (k == null) continue;
+      m[k] ??= { key: k, label: labelFn(t), total: 0, count: 0 };
+      m[k].total += v(t); m[k].count++;
+    }
+    return Object.values(m).map((x) => ({ ...x, pct: total ? (x.total / total) * 100 : 0 })).sort((a, b) => b.total - a.total);
+  };
+
+  const byCategory = group((t) => t.category, (t) => t.category);
+  const merchants = group((t) => normalizeMerchant(t.merchant) || null, (t) => t.merchant);
+  for (const m of merchants) m.category = exp.find((t) => normalizeMerchant(t.merchant) === m.key)?.category;
+  const byCard = group((t) => `${t.bank}|${t.card}`, (t) => t.card ? `${t.bank} •${t.card}` : t.bank);
+  const byBucket = group((t) => bucketOf(t, state), (t) => bucketOf(t, state));
+
+  const days = Math.round((range.end - range.start) / DAY);
+  const perDay = new Array(days).fill(0);
+  const perDayDaily = new Array(days).fill(0);
+  const weekday = new Array(7).fill(0);
+  const slots = Object.fromEntries(TIME_SLOTS.map(([n]) => [n, 0]));
+  for (const t of exp) {
+    const d = new Date(t.date);
+    const i = Math.floor((midnight(d) - range.start) / DAY);
+    perDay[i] += v(t);
+    if (bucketOf(t, state) === 'daily') perDayDaily[i] += v(t);
+    weekday[d.getDay()] += v(t);
+    slots[slotOf(d.getHours())] += v(t);
+  }
+  const topIdx = perDay.reduce((best, x, i) => (x > perDay[best] ? i : best), 0);
+  const topDay = total ? { date: new Date(range.start.getTime() + topIdx * DAY), total: perDay[topIdx], pct: (perDay[topIdx] / total) * 100 } : null;
+  const wd = weekday.indexOf(Math.max(...weekday));
+  const activeDays = perDay.filter((x) => x > 0).length;
+  return {
+    range, days, total, income, count: exp.length, byCategory, merchants, byCard, byBucket, perDay, topDay,
+    topWeekday: total ? { name: WEEKDAYS[wd], total: weekday[wd], pct: (weekday[wd] / total) * 100 } : null,
+    weekday, slots, avgPerDay: total / days, activeDays, noSpendDays: days - activeDays,
+    daysOver: dailyLimit > 0 ? perDayDaily.filter((x) => x > dailyLimit).length : null,
+  };
+}
+
+// ---------------- العادات ----------------
+/** يطلع عادات متكررة من آخر ٩٠ يوم بجمل واضحة */
+export function habits(state, txs, now = new Date(), CATS = {}) {
+  const rates = state.settings.rates;
+  const from = new Date(now - 90 * DAY);
+  const exp = txs.filter((t) => counts(t) && new Date(t.date) >= from && t.type !== 'transfer');
+  if (exp.length < 5) return [];
+  const first = Math.min(...exp.map((t) => +new Date(t.date)));
+  const weeks = Math.max((now - first) / (7 * DAY), 1);
+  const months = weeks / 4.345;
+  const out = [];
+  const v = (t) => sar(t, rates);
+
+  // تجار تزورهم كثير
+  const m = {};
+  for (const t of exp) {
+    const k = normalizeMerchant(t.merchant); if (!k) continue;
+    m[k] ??= { name: t.merchant, cat: t.category, n: 0, sum: 0 };
+    m[k].n++; m[k].sum += v(t);
+  }
+  Object.values(m).filter((x) => x.n >= 4 && x.n / weeks >= 0.5).sort((a, b) => b.n - a.n).slice(0, 4).forEach((x) => {
+    out.push({ icon: CATS[x.cat]?.icon || '📍', score: x.sum,
+      text: `تزور «${x.name}» تقريباً ${fmt1(x.n / weeks)} مرة بالأسبوع، بمتوسط ${fmt0(x.sum / x.n)} ر.س — يعني ${fmt0(x.sum / months)} ر.س بالشهر` });
+  });
+
+  // تصنيفات متكررة
+  const c = {};
+  for (const t of exp) { c[t.category] ??= { n: 0, sum: 0 }; c[t.category].n++; c[t.category].sum += v(t); }
+  for (const [k, x] of Object.entries(c)) {
+    if (['restaurants', 'delivery'].includes(k) && x.n / weeks >= 2) {
+      out.push({ icon: CATS[k]?.icon, score: x.sum,
+        text: `${CATS[k]?.name}: ${fmt1(x.n / weeks)} مرة بالأسبوع (${fmt0(x.sum / months)} ر.س بالشهر). لو قللتها مرتين بالأسبوع توفّر تقريباً ${fmt0((x.sum / x.n) * 2 * 4.345)} ر.س بالشهر` });
+    }
+  }
+
+  // مشتريات صغيرة متكررة
+  const small = exp.filter((t) => v(t) <= 30);
+  if (small.length >= 10) {
+    const s = small.reduce((a, t) => a + v(t), 0);
+    out.push({ icon: '🪙', score: s, text: `المشتريات الصغيرة (أقل من ٣٠ ر.س) تبان بسيطة، بس مجموعها ${fmt0(s / months)} ر.س بالشهر (${small.length} عملية)` });
+  }
+
+  // نهاية الأسبوع
+  const we = exp.filter((t) => [4, 5, 6].includes(new Date(t.date).getDay()));
+  const wdays = exp.filter((t) => ![4, 5, 6].includes(new Date(t.date).getDay()));
+  const weAvg = we.reduce((a, t) => a + v(t), 0) / (weeks * 3);
+  const wdAvg = wdays.reduce((a, t) => a + v(t), 0) / (weeks * 4);
+  if (wdAvg > 0 && weAvg / wdAvg >= 1.3) out.push({ icon: '📅', score: weAvg, text: `صرفك اليومي في الويكند (خميس–سبت) أعلى بـ ${fmt0((weAvg / wdAvg - 1) * 100)}% من باقي الأسبوع` });
+
+  // آخر الليل
+  const late = exp.filter((t) => { const h = new Date(t.date).getHours(); return h >= 22 || h < 4; });
+  if (late.length >= 5) {
+    const s = late.reduce((a, t) => a + v(t), 0);
+    out.push({ icon: '🌙', score: s, text: `${late.length} عملية بعد الساعة ١٠ بالليل بمجموع ${fmt0(s)} ر.س — غالباً طلبات وتسوق متأخر` });
+  }
+
+  // أول أسبوع بعد الراتب
+  const b = state.settings.budget;
+  if (b?.salary > 0) {
+    let fwSum = 0, restSum = 0, fwDays = 0, restDays = 0;
+    const inFirstWeek = (d) => (midnight(d) - cycleFor(d, b.payday || 27).start) / DAY < 7;
+    for (let d = midnight(new Date(first)); d <= now; d = new Date(d.getTime() + DAY)) inFirstWeek(d) ? fwDays++ : restDays++;
+    for (const t of exp) inFirstWeek(new Date(t.date)) ? (fwSum += v(t)) : (restSum += v(t));
+    if (fwDays >= 7 && restDays >= 7 && fwSum / fwDays > 1.4 * (restSum / restDays)) {
+      out.push({ icon: '💰', score: fwSum, text: `أول أسبوع بعد الراتب تصرف يومياً ${fmt0(fwSum / fwDays)} ر.س مقابل ${fmt0(restSum / restDays)} ر.س باقي الدورة — انتبه لـ«نشوة الراتب»` });
+    }
+  }
+  return out.sort((a, b2) => b2.score - a.score);
+}
+
+const nf0 = new Intl.NumberFormat('ar-SA-u-nu-latn', { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat('ar-SA-u-nu-latn', { maximumFractionDigits: 1 });
+const fmt0 = (n) => nf0.format(n);
+const fmt1 = (n) => nf1.format(n);
+
+/** يقترح التزامات من عمليات تابي/تمارا */
+export function suggestInstallments(txs, commitments = []) {
+  const have = new Set(commitments.map((c) => normalizeMerchant(c.keyword || c.name)));
+  const out = {};
+  for (const t of txs) {
+    if (!/tabby|تابي|tamara|تمارا/i.test(`${t.merchant} ${t.raw || ''}`)) continue;
+    const k = normalizeMerchant(t.merchant);
+    if (!k || have.has(k) || out[k]) continue;
+    out[k] = { name: t.merchant, amount: t.amount, provider: /tamara|تمارا/i.test(`${t.merchant} ${t.raw}`) ? 'تمارا' : 'تابي' };
+  }
+  return Object.values(out);
+}
+
+/** يتعرّف على الراتب من رسائل الإيداع */
+export function detectSalary(txs) {
+  const s = txs.filter((t) => t.type === 'income' && /راتب|salary|payroll|رواتب/i.test(`${t.raw || ''} ${t.merchant}`))
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+  return s ? { amount: s.amount, day: new Date(s.date).getDate() } : null;
+}
+export const normKey = normalizeMerchant;
