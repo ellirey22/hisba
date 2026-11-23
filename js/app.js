@@ -48,7 +48,7 @@ function applyAppearance() {
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyAppearance);
 // iOS ما يطبّق text-security: نحوّل حقول الراتب إلى password وقت الإخفاء (ويرجع نص عند التعديل)
-const SECRET_IN = '#b-salary, #b-savings, #b-daily';
+const SECRET_IN = '#b-savings, #b-daily';
 function maskInputs() {
   const on = document.documentElement.classList.contains('privacy');
   document.querySelectorAll(SECRET_IN).forEach((i) => { i.autocomplete = 'off'; i.type = on && document.activeElement !== i ? 'password' : 'text'; });
@@ -1150,7 +1150,7 @@ function renderSettings() {
 
   const budgetBody = `${detected ? `<div class="alert">لقيت إيداع راتب ${money(detected.amount, 0)} ر.س يوم ${detected.day} — <a href="#" id="use-detected">استخدمه</a></div>` : ''}
     <div class="grid2" style="margin-top:12px">
-      <label class="field">الراتب الشهري<input type="text" data-num inputmode="decimal" id="b-salary" value="${B.salary || ''}" placeholder="مثلاً 12000"></label>
+      <label class="field">الراتب الشهري<input type="text" data-num inputmode="decimal" id="b-salary" value="${B.salary || ''}" placeholder="مثلاً 12000" ${B.salary > 0 ? 'hidden' : ''}>${B.salary > 0 ? '<button type="button" class="btn" id="b-salary-edit">تعديل</button>' : ''}</label>
       <label class="field">يوم نزول الراتب<input type="text" data-num inputmode="numeric" id="b-payday" value="${B.payday || 27}"></label>
       <label class="field">ادخار إضافي شهري<input type="text" data-num inputmode="decimal" id="b-savings" value="${B.savings || ''}" placeholder="0"></label>
       <label class="field">حد يومي ثابت<input type="text" data-num inputmode="decimal" id="b-daily" value="${B.dailyOverride || ''}" placeholder="${TD ? fmt(TD.plan.autoDaily, 0) : 'تلقائي'}"></label>
@@ -1212,6 +1212,7 @@ function renderSettings() {
   const afterSave = (key, msg) => { closeAcc(key); ui.skipRender = true; toast(msg); setTimeout(() => { ui.skipRender = false; render(); }, 480); };
   $('#p-save').onclick = () => { ui.skipRender = true; store.updateSettings({ name: $('#p-name').value.trim() }); updateHeader(); afterSave('profile', '✅ انحفظ'); };
   const num = (id) => { const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : 0; };
+  $('#b-salary-edit')?.addEventListener('click', (e) => { e.preventDefault(); e.target.hidden = true; const i = $('#b-salary'); i.hidden = false; i.focus(); });
   $('#use-detected')?.addEventListener('click', (e) => { e.preventDefault(); $('#b-salary').value = detected.amount; $('#b-payday').value = detected.day; });
   $('#b-save').onclick = () => {
     const payday = Math.min(Math.max(parseInt($('#b-payday').value, 10) || 27, 1), 31);
