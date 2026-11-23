@@ -128,10 +128,12 @@ const invs = [
   { id: 'b', name: 'المغامرة', amount: 1300, overrides: { '2026-11': 900, '2026-12': 900 } },
   { id: 'o', name: 'أوبشن', amount: 0, variable: true },
 ];
-t('اسم الدورة بالشهر الغالب', () => {
-  assert.equal(cycleKey(cycleFor(D('2026-11-23'), 27)), '2026-11');
-  assert.equal(cycleKey(cycleFor(D('2026-12-05'), 27)), '2026-12');
-  assert.equal(cycleKey(cycleFor(D('2027-01-10'), 27)), '2027-01');
+t('اسم الدورة بشهر نزول الراتب', () => {
+  assert.equal(cycleKey(cycleFor(D('2026-11-23'), 27)), '2026-10');
+  assert.equal(cycleKey(cycleFor(D('2026-11-27T09:00'), 27)), '2026-11');
+  assert.equal(cycleKey(cycleFor(D('2026-12-20'), 27)), '2026-11');
+  assert.equal(cycleKey(cycleFor(D('2026-12-28'), 27)), '2026-12');
+  assert.equal(cycleKey(cycleFor(D('2027-01-27'), 27)), '2027-01');
 });
 t('المبالغ المؤقتة لنوفمبر وديسمبر ثم ترجع', () => {
   assert.equal(investmentsPlanned(invs, '2026-11'), 2100);
@@ -140,18 +142,30 @@ t('المبالغ المؤقتة لنوفمبر وديسمبر ثم ترجع', (
 });
 t('الاستثمار ينخصم قبل الحد اليومي، والتحويلات ما تنحسب صرف', () => {
   const st = base({ savings: 0, monthlyBudget: 0 }); st.investments = invs;
-  const txs = [{ type: 'transfer', amount: 1200, investmentId: 'a', date: '2026-10-28T10:00:00' }];
-  const r = today(st, txs, D('2026-10-29T12:00'));
+  const txs = [{ type: 'transfer', amount: 1200, investmentId: 'a', date: '2026-11-28T10:00:00' }];
+  const r = today(st, txs, D('2026-11-29T12:00'));
   assert.equal(r.plan.investments, 2100);
-  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100) / 31) < 0.01);
+  assert.equal(r.plan.days, 30);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100) / 30) < 0.01);
+  assert.equal(today(st, [], D('2027-01-28T12:00')).plan.investments, 2900);
   assert.equal(r.total, 0);
 });
 t('تحويل الأوبشن ينقص الحد اليومي', () => {
   const st = base({ savings: 0, monthlyBudget: 0 }); st.investments = invs;
-  const r = today(st, [{ type: 'transfer', amount: 620, investmentId: 'o', date: '2026-10-28T10:00:00' }], D('2026-10-29T12:00'));
+  const r = today(st, [{ type: 'transfer', amount: 620, investmentId: 'o', date: '2026-11-28T10:00:00' }], D('2026-11-29T12:00'));
   assert.equal(r.plan.unplanned, 620);
-  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100 - 620) / 31) < 0.01);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100 - 620) / 30) < 0.01);
   assert.equal(r.total, 0);
+});
+t('قبل بداية الحسبة: انتظار، والعمليات القديمة ما تنحسب', () => {
+  const st = base({ startDate: '2026-11-27' });
+  const r0 = today(st, [], D('2026-11-23T12:00'));
+  assert.equal(r0.pending, true); assert.equal(r0.daysToStart, 4);
+  const r = today(st, [
+    { type: 'purchase', amount: 999, date: '2026-11-20T10:00:00', merchant: 'OLD' },
+    { type: 'purchase', amount: 50, date: '2026-11-27T10:00:00', merchant: 'NEW' },
+  ], D('2026-11-27T12:00'));
+  assert.equal(r.total, 50);
 });
 console.log(`\n${pass}/${pass + fail} نجحت`);
 if (fail) process.exit(1);

@@ -70,7 +70,7 @@ function trySetup(text) {
   if (!/^\s*HISBA-SETUP:/.test(text || '')) return false;
   try {
     const r = store.applySetup(text);
-    toast(`✅ تم الإعداد: ${r.added} محفظة جديدة${r.updated ? ` و${r.updated} تحدّثت` : ''} — تلقاها في «الالتزامات»`, 6000);
+    toast(`✅ تم الإعداد: ${r.added} محفظة جديدة${r.updated ? ` و${r.updated} تحدّثت` : ''}${r.budget ? '، وضبطت يوم الراتب وبداية الحسبة' : ''}`, 6000);
     ui.tab = 'commits'; syncTabs(); render();
   } catch { toast('كود الإعداد غير صالح — انسخه كامل'); }
   return true;
@@ -371,6 +371,18 @@ function todayCard() {
       <button class="btn primary block" id="go-budget">إعداد الميزانية</button></div>`;
   }
   const r = budget.today(s, visibleTxs());
+  if (r.pending) {
+    const p = r.plan;
+    return `<div class="card today"><div class="muted small">⏳ الحسبة الفعلية تبدأ مع راتب</div>
+      <div class="today-amt">${dateFmt.format(r.startDate)}</div>
+      <div class="small muted">بعد ${r.daysToStart} ${r.daysToStart === 1 ? 'يوم' : r.daysToStart === 2 ? 'يومين' : 'أيام'} — اللي قبله ما يدخل في الميزانية ولا التقارير</div>
+      <div class="today-grid small">
+        <div><b>${money(p.daily, 0)}</b><span>حدك اليومي المتوقع</span></div>
+        <div><b>${p.days}</b><span>يوم في أول دورة</span></div>
+        <div><b>${money(p.commitments, 0)}</b><span>التزامات</span></div>
+        <div><b>${money(p.investments, 0)}</b><span>استثمار (دورة ${monthName(p.key)})</span></div>
+      </div></div>`;
+  }
   const p = r.plan;
   const pct = Math.min(Math.max(r.spentToday / Math.max(r.allowance, 1), 0), 1) * 100;
   const daysToSalary = p.days - r.idx;
@@ -402,6 +414,8 @@ function maybeArchive() {
   if (!(b.salary > 0)) return;
   const prev = budget.cycleFor(new Date(), b.payday || 27, -1);
   const p = budget.plan(s);
+  const st = budget.startOf(s);
+  if (st && prev.start < st) return;
   if (p && s.txs.some((t) => new Date(t.date) >= prev.start && new Date(t.date) < prev.end)) {
     store.archiveCycle({ start: prev.start.toISOString(), end: prev.end.toISOString(), salary: p.salary, daily: p.daily, commitments: p.commitments });
   }
@@ -550,7 +564,10 @@ function reportHabits() {
 function reportArchive(all, hasBudget, payday) {
   const s = store.getState();
   if (!all.length) return '<div class="empty"><div class="big">🗂️</div>ما فيه بيانات للحين</div>';
-  const first = new Date(Math.min(...all.map((t) => +new Date(t.date))));
+  const st = budget.startOf(s);
+  const tr = budget.tracked(s, all);
+  if (!tr.length) return `<div class="empty"><div class="big">🗂️</div>${st ? `الأرشيف يبدأ من ${dateFmt.format(st)}` : 'ما فيه بيانات للحين'}</div>`;
+  const first = new Date(Math.max(Math.min(...tr.map((t) => +new Date(t.date))), st ? +st : 0));
   const rows = [];
   for (let o = 0; o > -36; o--) {
     const r = hasBudget ? budget.cycleFor(new Date(), payday, o) : periodRange('month', o);
@@ -579,7 +596,9 @@ function renderCommitments() {
     .filter((x) => !s.commitments.some((c) => budget.normKey(c.keyword || c.name) === x.key));
   const inst = budget.suggestInstallments(visibleTxs(), s.commitments);
   const remainingDebt = list.reduce((a, { st }) => a + (st.remainingAmount || 0), 0);
-  const cyc = s.settings.budget.salary > 0 ? budget.cycleFor(new Date(), s.settings.budget.payday || 27) : periodRange('month', 0);
+  const st0 = budget.startOf(s);
+  const ref = st0 && new Date() < st0 ? st0 : new Date(); // قبل بداية الحسبة نعرض أول دورة فعلية
+  const cyc = s.settings.budget.salary > 0 ? budget.cycleFor(ref, s.settings.budget.payday || 27) : periodRange('month', 0);
   const paidOf = (c) => budget.paidInRange(c, s.txs, s.commitments, cyc);
   const needSample = list.filter(({ c, st }) => st.active && !c.signature && !c.keyword);
   view.innerHTML = `
@@ -806,6 +825,8 @@ function renderSettings() {
       <p class="small muted" style="margin-top:-4px">«ميزانية المشتريات الشهرية» للأشياء الكبيرة اللي ما تبغاها تاكل حدك اليومي (ملابس، أجهزة، هدايا…). تختار لكل عملية: يومي أو شهري.</p>
       <label class="field">الحد اليومي (ر.س) <span class="small">— خلّه فاضي عشان أحسبه تلقائياً${TD ? `: <b>${fmt(TD.plan.autoDaily, 0)}</b>` : ''}</span>
         <input type="text" data-num inputmode="decimal" id="b-daily" value="${B.dailyOverride || ''}" placeholder="${TD ? fmt(TD.plan.autoDaily, 0) : 'تلقائي'}"></label>
+      <label class="field">بداية الحسبة الفعلية <span class="small">(العمليات قبلها ما تدخل في الميزانية ولا التقارير)</span>
+        <input type="date" id="b-start" value="${esc(B.startDate || '')}"></label>
       <label class="switch"><input type="checkbox" id="b-roll" ${B.rollover !== false ? 'checked' : ''}> ترحيل الفائض: اللي ما تصرفه اليوم ينضاف لحد بكرة (والتجاوز ينخصم منه)</label>
       ${P ? `<div class="plan small">
         <div class="kv"><span>الراتب</span><span>${money(P.salary, 0)}</span></div>
@@ -911,7 +932,7 @@ function renderSettings() {
   $('#b-save').onclick = () => {
     const payday = Math.min(Math.max(parseInt($('#b-payday').value, 10) || 27, 1), 31);
     store.updateBudget({ salary: num('#b-salary'), payday, savings: num('#b-savings'), monthlyBudget: num('#b-monthly'),
-      dailyOverride: num('#b-daily'), rollover: $('#b-roll').checked });
+      dailyOverride: num('#b-daily'), rollover: $('#b-roll').checked, startDate: $('#b-start').value || '' });
     toast('✅ انحفظت الميزانية'); maybeArchive();
   };
   view.querySelectorAll('[data-rate]').forEach((i) => i.onchange = () => {

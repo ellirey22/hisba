@@ -243,8 +243,9 @@ export function applySetup(code) {
     if (ex) { Object.assign(ex, { amount: inv.amount, variable: !!inv.variable, overrides: inv.overrides || {}, cap: +inv.cap || 0 }); updated++; }
     else { state.investments.push({ overrides: {}, ...inv, id: uid() }); added++; }
   }
+  if (json.budget) state.settings.budget = { ...state.settings.budget, ...json.budget };
   save();
-  return { added, updated };
+  return { added, updated, budget: !!json.budget };
 }
 
 export function deleteCommitment(id) { state.commitments = state.commitments.filter((c) => c.id !== id); save(); }

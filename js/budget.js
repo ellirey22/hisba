@@ -113,10 +113,20 @@ export function commitmentsTotal(commitments = [], now = new Date()) {
 }
 
 // ---------------- الاستثمار ----------------
-/** اسم الدورة بالشهر اللي فيه أغلب أيامها (دورة ٢٧ أكتوبر–٢٦ نوفمبر = نوفمبر) */
+/** اسم الدورة بشهر نزول الراتب (راتب ٢٧ نوفمبر = دورة نوفمبر، من ٢٧ نوفمبر لين ٢٦ ديسمبر) */
 export function cycleKey(range) {
-  const mid = new Date(range.start.getTime() + 15 * DAY);
-  return `${mid.getFullYear()}-${String(mid.getMonth() + 1).padStart(2, '0')}`;
+  const d = range.start;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** تاريخ بداية الحسبة الفعلية: اللي قبله ما يدخل في الميزانية ولا التقارير */
+export function startOf(state) {
+  const s = state.settings?.budget?.startDate;
+  return s ? new Date(`${s}T00:00:00`) : null;
+}
+export function tracked(state, txs) {
+  const st = startOf(state);
+  return st ? txs.filter((t) => new Date(t.date) >= st) : txs;
 }
 
 /** المبلغ المخطط للمحفظة في دورة معيّنة: المبلغ المؤقت لو فيه، وإلا الثابت */
@@ -162,6 +172,12 @@ export function plan(state, now = new Date()) {
 export function today(state, txs, now = new Date()) {
   const p = plan(state, now);
   if (!p) return null;
+  const st = startOf(state);
+  if (st && now < st) {
+    const sp = plan(state, st);
+    return { pending: true, startDate: st, daysToStart: Math.ceil((st - midnight(now)) / DAY), plan: sp };
+  }
+  txs = tracked(state, txs);
   const rates = state.settings.rates;
   const n = p.days;
   const perDay = new Array(n).fill(0);
@@ -216,7 +232,7 @@ export const WEEKDAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'ا
 
 export function cycleReport(state, txs, range, dailyLimit = 0) {
   const rates = state.settings.rates;
-  const list = txs.filter((t) => { const d = new Date(t.date); return d >= range.start && d < range.end; });
+  const list = tracked(state, txs).filter((t) => { const d = new Date(t.date); return d >= range.start && d < range.end; });
   const exp = list.filter(counts);
   const v = (t) => sar(t, rates);
   const total = exp.reduce((a, t) => a + v(t), 0);
@@ -268,7 +284,7 @@ export function cycleReport(state, txs, range, dailyLimit = 0) {
 export function habits(state, txs, now = new Date(), CATS = {}) {
   const rates = state.settings.rates;
   const from = new Date(now - 90 * DAY);
-  const exp = txs.filter((t) => counts(t) && new Date(t.date) >= from && t.type !== 'transfer');
+  const exp = tracked(state, txs).filter((t) => counts(t) && new Date(t.date) >= from && t.type !== 'transfer');
   if (exp.length < 5) return [];
   const first = Math.min(...exp.map((t) => +new Date(t.date)));
   const weeks = Math.max((now - first) / (7 * DAY), 1);
