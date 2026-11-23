@@ -822,6 +822,8 @@ function renderSettings() {
         <label class="field">ادخار إضافي شهري <span class="small">(غير الاستثمار)</span><input type="text" data-num inputmode="decimal" id="b-savings" value="${B.savings || ''}" placeholder="0"></label>
         <label class="field">ميزانية مشتريات شهرية<input type="text" data-num inputmode="decimal" id="b-monthly" value="${B.monthlyBudget || ''}" placeholder="0"></label>
       </div>
+      ${(() => { const pd = B.payday || 27; const n = budget.cycleFor(new Date(), pd, 1).start; const shifted = n.getDate() !== Math.min(pd, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate());
+        return `<p class="small muted" style="margin-top:-6px">📅 الراتب الجاي: <b>${dateFmt.format(n)}</b>${shifted ? ' (انتقل بسبب الويكند)' : ''}. لو صادف جمعة ينزل الخميس قبله، ولو سبت ينزل الأحد بعده.</p>`; })()}
       <p class="small muted" style="margin-top:-4px">«ميزانية المشتريات الشهرية» للأشياء الكبيرة اللي ما تبغاها تاكل حدك اليومي (ملابس، أجهزة، هدايا…). تختار لكل عملية: يومي أو شهري.</p>
       <label class="field">الحد اليومي (ر.س) <span class="small">— خلّه فاضي عشان أحسبه تلقائياً${TD ? `: <b>${fmt(TD.plan.autoDaily, 0)}</b>` : ''}</span>
         <input type="text" data-num inputmode="decimal" id="b-daily" value="${B.dailyOverride || ''}" placeholder="${TD ? fmt(TD.plan.autoDaily, 0) : 'تلقائي'}"></label>

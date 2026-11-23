@@ -7,15 +7,28 @@ let pass = 0, fail = 0;
 const t = (name, fn) => { try { fn(); pass++; console.log('✓', name); } catch (e) { fail++; console.log('✗', name, '—', e.message); } };
 const D = (s) => new Date(s);
 
-t('الدورة: راتب ٢٧ واليوم ٢٣ نوفمبر ← من ٢٧ أكتوبر', () => {
+t('الدورة: راتب ٢٧ واليوم ٢٣ نوفمبر ← من ٢٧ أكتوبر لين ٢٥ نوفمبر', () => {
   const c = cycleFor(D('2026-11-23T10:00'), 27);
   assert.equal(c.start.toDateString(), D('2026-10-27T00:00').toDateString());
-  assert.equal(c.end.toDateString(), D('2026-11-27T00:00').toDateString());
-  assert.equal(c.days, 31);
+  assert.equal(c.end.toDateString(), D('2026-11-26T00:00').toDateString()); // ٢٧ نوفمبر جمعة ← الراتب الخميس
+  assert.equal(c.days, 30);
 });
 t('الدورة: يوم الراتب نفسه يبدأ دورة جديدة', () => {
-  assert.equal(cycleFor(D('2026-11-27T08:00'), 27).start.getDate(), 27);
-  assert.equal(cycleFor(D('2026-11-27T08:00'), 27).start.getMonth(), 10);
+  assert.equal(cycleFor(D('2026-10-27T08:00'), 27).start.getDate(), 27);
+  assert.equal(cycleFor(D('2026-10-27T08:00'), 27).start.getMonth(), 9);
+});
+t('الويكند: ٢٧ نوفمبر ٢٠٢٦ جمعة ← الراتب الخميس ٢٦', () => {
+  const c = cycleFor(D('2026-11-26T09:00'), 27);
+  assert.equal(c.start.toDateString(), D('2026-11-26T00:00').toDateString());
+  assert.equal(c.end.toDateString(), D('2026-12-27T00:00').toDateString()); // ٢٧ ديسمبر أحد
+  assert.equal(c.days, 31); assert.equal(c.key, '2026-11');
+  assert.equal(cycleFor(D('2026-11-25T22:00'), 27).key, '2026-10');
+});
+t('الويكند: ٢٧ فبراير ٢٠٢٧ سبت ← الراتب الأحد ٢٨', () => {
+  const c = cycleFor(D('2027-02-27T12:00'), 27);
+  assert.equal(c.key, '2027-01'); // السبت ٢٧ لسا من دورة يناير
+  const f = cycleFor(D('2027-02-28T09:00'), 27);
+  assert.equal(f.key, '2027-02'); assert.equal(f.start.getDate(), 28);
 });
 t('الدورة: راتب ٣١ في فبراير ← آخر يوم بالشهر', () => {
   const c = cycleFor(D('2027-03-05T10:00'), 31);
@@ -23,7 +36,8 @@ t('الدورة: راتب ٣١ في فبراير ← آخر يوم بالشهر'
   assert.equal(c.end.toDateString(), D('2027-03-31T00:00').toDateString());
 });
 t('الدورة السابقة', () => {
-  assert.equal(cycleFor(D('2026-11-23'), 27, -1).start.toDateString(), D('2026-09-27T00:00').toDateString());
+  assert.equal(cycleFor(D('2026-11-23'), 27, -1).start.toDateString(), D('2026-09-27T00:00').toDateString()); // ٢٧ سبتمبر أحد
+  assert.equal(cycleFor(D('2026-12-20'), 27, -1).key, '2026-10');
 });
 
 const base = (extra = {}) => ({
@@ -31,7 +45,7 @@ const base = (extra = {}) => ({
   commitments: [{ id: 'c1', name: 'إيجار', amount: 2700, day: 1, kind: 'rent' }],
   bucketRules: {},
 });
-// الدورة ٢٧ أكتوبر – ٢٦ نوفمبر = ٣١ يوم ← (10000-2700-1000-1000)/31 = 170.97
+// الدورة ٢٧ أكتوبر – ٢٥ نوفمبر = ٣٠ يوم (راتب نوفمبر ينزل الخميس ٢٦) ← (10000-2700-1000-1000)/30
 t('الحد اليومي التلقائي والترحيل', () => {
   const st = base();
   const txs = [
@@ -40,11 +54,10 @@ t('الحد اليومي التلقائي والترحيل', () => {
     { type: 'purchase', amount: 50, date: '2026-10-29T12:00:00', merchant: 'KUDU', category: 'restaurants' },
   ];
   const r = today(st, txs, D('2026-10-29T18:00'));
-  assert.equal(r.plan.days, 31);
-  assert.ok(Math.abs(r.plan.daily - 5300 / 31) < 0.01);
-  // الترحيل = حد يومين − 100 = 241.94
-  assert.ok(Math.abs(r.carry - (2 * 5300 / 31 - 100)) < 0.01, 'carry ' + r.carry);
-  assert.ok(Math.abs(r.remainingToday - (3 * 5300 / 31 - 150)) < 0.01);
+  assert.equal(r.plan.days, 30);
+  assert.ok(Math.abs(r.plan.daily - 5300 / 30) < 0.01);
+  assert.ok(Math.abs(r.carry - (2 * 5300 / 30 - 100)) < 0.01, 'carry ' + r.carry);
+  assert.ok(Math.abs(r.remainingToday - (3 * 5300 / 30 - 150)) < 0.01);
   assert.equal(r.monthlySpent, 300);
 });
 t('بدون ترحيل', () => {
@@ -130,7 +143,7 @@ const invs = [
 ];
 t('اسم الدورة بشهر نزول الراتب', () => {
   assert.equal(cycleKey(cycleFor(D('2026-11-23'), 27)), '2026-10');
-  assert.equal(cycleKey(cycleFor(D('2026-11-27T09:00'), 27)), '2026-11');
+  assert.equal(cycleKey(cycleFor(D('2026-11-26T09:00'), 27)), '2026-11');
   assert.equal(cycleKey(cycleFor(D('2026-12-20'), 27)), '2026-11');
   assert.equal(cycleKey(cycleFor(D('2026-12-28'), 27)), '2026-12');
   assert.equal(cycleKey(cycleFor(D('2027-01-27'), 27)), '2027-01');
@@ -145,8 +158,8 @@ t('الاستثمار ينخصم قبل الحد اليومي، والتحويل
   const txs = [{ type: 'transfer', amount: 1200, investmentId: 'a', date: '2026-11-28T10:00:00' }];
   const r = today(st, txs, D('2026-11-29T12:00'));
   assert.equal(r.plan.investments, 2100);
-  assert.equal(r.plan.days, 30);
-  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100) / 30) < 0.01);
+  assert.equal(r.plan.days, 31);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100) / 31) < 0.01);
   assert.equal(today(st, [], D('2027-01-28T12:00')).plan.investments, 2900);
   assert.equal(r.total, 0);
 });
@@ -154,17 +167,17 @@ t('تحويل الأوبشن ينقص الحد اليومي', () => {
   const st = base({ savings: 0, monthlyBudget: 0 }); st.investments = invs;
   const r = today(st, [{ type: 'transfer', amount: 620, investmentId: 'o', date: '2026-11-28T10:00:00' }], D('2026-11-29T12:00'));
   assert.equal(r.plan.unplanned, 620);
-  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100 - 620) / 30) < 0.01);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100 - 620) / 31) < 0.01);
   assert.equal(r.total, 0);
 });
 t('قبل بداية الحسبة: انتظار، والعمليات القديمة ما تنحسب', () => {
-  const st = base({ startDate: '2026-11-27' });
+  const st = base({ startDate: '2026-11-26' });
   const r0 = today(st, [], D('2026-11-23T12:00'));
-  assert.equal(r0.pending, true); assert.equal(r0.daysToStart, 4);
+  assert.equal(r0.pending, true); assert.equal(r0.daysToStart, 3);
   const r = today(st, [
     { type: 'purchase', amount: 999, date: '2026-11-20T10:00:00', merchant: 'OLD' },
-    { type: 'purchase', amount: 50, date: '2026-11-27T10:00:00', merchant: 'NEW' },
-  ], D('2026-11-27T12:00'));
+    { type: 'purchase', amount: 50, date: '2026-11-26T10:00:00', merchant: 'NEW' },
+  ], D('2026-11-26T12:00'));
   assert.equal(r.total, 50);
 });
 console.log(`\n${pass}/${pass + fail} نجحت`);

@@ -9,14 +9,29 @@ const atPayday = (y, m, payday) => new Date(y, m, Math.min(payday, dim(y, m)));
 const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 // ---------------- دورة الراتب ----------------
+/**
+ * يوم نزول الراتب الفعلي في شهر: لو صادف ويكند (الجمعة/السبت) ينزل قبله أو بعده:
+ * الجمعة ← الخميس اللي قبله · السبت ← الأحد اللي بعده
+ */
+export function actualPayday(y, m, payday = 27) {
+  const d = atPayday(y, m, payday);
+  if (d.getDay() === 5) d.setDate(d.getDate() - 1);
+  else if (d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+
 /** الدورة اللي فيها التاريخ: من يوم الراتب لين اليوم اللي قبل الراتب الجاي. offset = -1 للدورة السابقة */
 export function cycleFor(date = new Date(), payday = 27, offset = 0) {
   const d = midnight(date);
-  let start = atPayday(d.getFullYear(), d.getMonth(), payday);
-  if (d < start) start = atPayday(d.getFullYear(), d.getMonth() - 1, payday);
-  start = atPayday(start.getFullYear(), start.getMonth() + offset, payday);
-  const end = atPayday(start.getFullYear(), start.getMonth() + 1, payday);
-  return { start, end, days: Math.round((end - start) / DAY) };
+  // الشهر الاسمي للراتب (راتب نوفمبر ممكن ينزل ٢٦ نوفمبر لو ٢٧ جمعة)
+  let y = d.getFullYear(), m = d.getMonth();
+  if (d < actualPayday(y, m, payday)) m -= 1;
+  else if (d >= actualPayday(y, m + 1, payday)) m += 1;
+  m += offset;
+  const start = actualPayday(y, m, payday);
+  const end = actualPayday(y, m + 1, payday);
+  const nominal = new Date(y, m, 1);
+  return { start, end, days: Math.round((end - start) / DAY), key: `${nominal.getFullYear()}-${String(nominal.getMonth() + 1).padStart(2, '0')}` };
 }
 
 // ---------------- نوع الصرف لكل عملية ----------------
@@ -115,6 +130,7 @@ export function commitmentsTotal(commitments = [], now = new Date()) {
 // ---------------- الاستثمار ----------------
 /** اسم الدورة بشهر نزول الراتب (راتب ٢٧ نوفمبر = دورة نوفمبر، من ٢٧ نوفمبر لين ٢٦ ديسمبر) */
 export function cycleKey(range) {
+  if (range.key) return range.key;
   const d = range.start;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
