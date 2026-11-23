@@ -178,3 +178,11 @@ details summary { cursor: pointer; font-weight: 700; }
 .ov-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
 .ov-row input { width: 100%; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
 .row .title.wrap { white-space: normal; }
+
+/* التسليف */
+.stats3 { grid-template-columns: repeat(3, 1fr) !important; }
+.sec-title { font-size: 13px; font-weight: 700; color: var(--muted); margin: 14px 2px 2px; }
+.debt-card .list { margin-bottom: 2px; }
+a.btn { color: inherit; }
+
+.today-grid b > span, .stats b > span { color: inherit; font-size: inherit; }

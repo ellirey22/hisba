@@ -11,6 +11,7 @@ const defaults = () => ({
   cards: {},          // "البنك|آخر4" ← { nickname, hidden }
   unparsed: [],       // رسائل ما قدر يقرأها، تقدر تضيفها يدوياً
   commitments: [],    // الالتزامات الشهرية: إيجار، فواتير، أقساط تابي/تمارا، قروض
+  debts: [],          // التسليف: سلّفت/استلفت من أشخاص مع الدفعات
   investments: [],    // محافظ الاستثمار: مبلغ شهري ثابت + مبالغ مؤقتة لدورات معيّنة، أو حساب متغيّر (أوبشن)
   bucketRules: {},    // اسم التاجر ← daily | monthly (تتعلّمها من اختياراتك)
   archive: [],        // لقطة لكل دورة راتب منتهية (الراتب والحد وقتها)
@@ -246,6 +247,79 @@ export function applySetup(code) {
   if (json.budget) state.settings.budget = { ...state.settings.budget, ...json.budget };
   save();
   return { added, updated, budget: !!json.budget };
+}
+
+// ---------- التسليف ----------
+// تسليفك لغيرك مو صرف (تنستبعد العملية)، وتسديدك لدين عليك ينحسب التزام (ينقص من راتبك بس مو من حدك اليومي)
+function applyDebtLink(tx, debt, role) {
+  unlinkDebtTx(tx);
+  tx.debtId = debt.id; tx.debtRole = role;
+  delete tx.commitmentId; delete tx.investmentId;
+  if (tx.type === 'income') return;
+  if (debt.direction === 'lent' && role === 'principal') { tx.excluded = true; tx.debtExcluded = true; }
+  else if (debt.direction === 'borrowed' && role === 'payment') { tx.bucket = 'commitment'; tx.debtBucket = true; }
+}
+function unlinkDebtTx(tx) {
+  if (tx.debtExcluded) tx.excluded = false;
+  if (tx.debtBucket) delete tx.bucket;
+  delete tx.debtExcluded; delete tx.debtBucket; delete tx.debtId; delete tx.debtRole;
+}
+
+export function saveDebt(d) {
+  let saved;
+  if (d.id) state.debts = state.debts.map((x) => (x.id === d.id ? (saved = { ...x, ...d }) : x));
+  else state.debts.unshift(saved = { payments: [], ...d, id: uid() });
+  save();
+  return saved;
+}
+export function deleteDebt(id) {
+  for (const t of state.txs) if (t.debtId === id) unlinkDebtTx(t);
+  state.debts = state.debts.filter((x) => x.id !== id);
+  save();
+}
+/** يجيب عملية من رسالة بنك (موجودة أو جديدة) بدون ما يربطها */
+export function debtMessageTx(text) {
+  const clean = String(text || '').trim();
+  if (!clean) return { ok: false };
+  const ex = state.txs.find((t) => (t.raw || '').trim() === clean);
+  if (ex) return { ok: true, tx: ex, status: 'existing' };
+  const res = addMessage(clean, { persist: false });
+  if (res.status !== 'added') { save(); return { ok: false, reason: res.status }; }
+  return { ok: true, tx: res.tx, status: 'added' };
+}
+/** يربط عملية بدين: role = principal (أصل الدين) أو payment (سداد) */
+export function attachDebtTx(debtId, txId, role) {
+  const d = state.debts.find((x) => x.id === debtId);
+  const tx = state.txs.find((x) => x.id === txId);
+  if (!d || !tx) return false;
+  applyDebtLink(tx, d, role);
+  if (role === 'principal') d.principalTxId = tx.id;
+  else if (!d.payments.some((p) => p.txId === tx.id)) d.payments.push({ id: uid(), amount: tx.amount, date: tx.date, txId: tx.id });
+  save();
+  return true;
+}
+export function unlinkTxDebt(txId) {
+  const tx = state.txs.find((x) => x.id === txId);
+  if (!tx || !tx.debtId) return;
+  const d = state.debts.find((x) => x.id === tx.debtId);
+  if (d) { d.payments = d.payments.filter((p) => p.txId !== tx.id); if (d.principalTxId === tx.id) delete d.principalTxId; }
+  unlinkDebtTx(tx);
+  save();
+}
+export function addDebtPayment(debtId, { amount, date }) {
+  const d = state.debts.find((x) => x.id === debtId);
+  if (!d) return;
+  d.payments.push({ id: uid(), amount, date });
+  save();
+}
+export function deleteDebtPayment(debtId, paymentId) {
+  const d = state.debts.find((x) => x.id === debtId);
+  const p = d?.payments.find((x) => x.id === paymentId);
+  if (!p) return;
+  const tx = p.txId && state.txs.find((t) => t.id === p.txId);
+  if (tx) unlinkDebtTx(tx);
+  d.payments = d.payments.filter((x) => x.id !== paymentId);
+  save();
 }
 
 export function deleteCommitment(id) { state.commitments = state.commitments.filter((c) => c.id !== id); save(); }

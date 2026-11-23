@@ -127,6 +127,23 @@ export function commitmentsTotal(commitments = [], now = new Date()) {
   return commitments.filter((c) => commitmentStatus(c, now).active).reduce((a, c) => a + (+c.amount || 0), 0);
 }
 
+// ---------------- التسليف ----------------
+export const debtPaid = (d) => (d.payments || []).reduce((a, p) => a + (+p.amount || 0), 0);
+export const debtRemaining = (d) => Math.max((+d.amount || 0) - debtPaid(d), 0);
+
+/** لي = اللي سلّفته ولسا ما رجع، عليّ = اللي استلفته ولسا ما سدّدته */
+export function debtSummary(debts = [], now = new Date()) {
+  const open = debts.filter((d) => debtRemaining(d) > 0.004);
+  const lent = open.filter((d) => d.direction === 'lent');
+  const borrowed = open.filter((d) => d.direction === 'borrowed');
+  const sum = (l) => l.reduce((a, d) => a + debtRemaining(d), 0);
+  const overdue = open.filter((d) => d.dueDate && new Date(`${d.dueDate}T23:59:59`) < now);
+  return {
+    lent, borrowed, overdue, settled: debts.filter((d) => debtRemaining(d) <= 0.004),
+    toMe: sum(lent), iOwe: sum(borrowed), net: sum(lent) - sum(borrowed),
+  };
+}
+
 // ---------------- الاستثمار ----------------
 /** اسم الدورة بشهر نزول الراتب (راتب ٢٧ نوفمبر = دورة نوفمبر، من ٢٧ نوفمبر لين ٢٦ ديسمبر) */
 export function cycleKey(range) {

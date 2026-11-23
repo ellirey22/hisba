@@ -222,7 +222,7 @@ function txRow(t) {
   const bk = budget.counts(t) && store.getState().settings.budget.salary > 0 ? budget.bucketOf(t, store.getState()) : 'daily';
   return `<li class="row ${t.excluded ? 'excluded' : ''}" data-id="${t.id}">
     <div class="ic" style="background:${c.color}22">${c.icon}</div>
-    <div class="main"><div class="title">${esc(t.merchant || typeLabel(t.type))}${t.confidence === 'low' ? '<span class="badge warn">راجعها</span>' : ''}${bk !== 'daily' ? `<span class="badge">${BUCKETS[bk].short}</span>` : ''}${t.excluded ? '<span class="badge">مستبعدة</span>' : ''}${t.investmentId ? '<span class="badge">📈 استثمار</span>' : ''}</div>
+    <div class="main"><div class="title">${esc(t.merchant || typeLabel(t.type))}${t.confidence === 'low' ? '<span class="badge warn">راجعها</span>' : ''}${bk !== 'daily' ? `<span class="badge">${BUCKETS[bk].short}</span>` : ''}${t.excluded ? '<span class="badge">مستبعدة</span>' : ''}${t.investmentId ? '<span class="badge">📈 استثمار</span>' : ''}${t.debtId ? '<span class="badge">🤝 تسليف</span>' : ''}</div>
     <div class="meta">${esc(meta)}</div></div>
     <div class="amt ${t.type === 'income' ? 'income' : ''}">${sign}${money(t.amount)} <span class="small muted">${curLabel(t.currency)}</span></div></li>`;
 }
@@ -287,6 +287,11 @@ function openTxSheet(id) {
     <label class="field">النوع<select id="e-type">${['purchase', 'bill', 'transfer', 'withdrawal', 'income'].map((k) =>
       `<option value="${k}" ${t.type === k ? 'selected' : ''}>${typeLabel(k)}</option>`).join('')}</select></label>
     <label class="switch"><input type="checkbox" id="e-excl" ${t.excluded ? 'checked' : ''}> استبعدها من الإحصائيات (مثلاً تحويل بين حساباتك)</label>
+    ${t.type !== 'purchase' || t.merchant ? `<label class="field">🤝 تسليف / سداد دين
+      <select id="e-debt"><option value="">— بدون —</option>
+        ${t.debtId ? '<option value="unlink">فك الربط بالدين</option>' : ''}
+        ${st.debts.filter((x) => budget.debtRemaining(x) > 0.004 && x.id !== t.debtId).map((x) => `<option value="d:${x.id}">${x.direction === 'lent' ? 'سداد من' : 'سداد لـ'} ${esc(x.person)} (متبقي ${fmt(budget.debtRemaining(x), 0)})</option>`).join('')}
+        ${!t.debtId ? '<option value="new:lent">📤 هذي تسليف جديد</option><option value="new:borrowed">📥 هذي استلاف جديد</option>' : ''}</select></label>` : ''}
     ${t.raw ? `<details><summary class="small">نص الرسالة الأصلي</summary><div class="raw" dir="auto">${esc(t.raw)}</div></details>` : ''}
     <button class="btn primary block" id="save">حفظ</button>
     <button class="btn danger block" id="del">حذف العملية</button>`, (p) => {
@@ -305,6 +310,18 @@ function openTxSheet(id) {
       if (chosen !== t.category || $('#apply-all', p).checked && t.categorySource !== 'manual') {
         const n = store.setCategory(id, chosen, $('#apply-all', p).checked);
         if (n > 1) toast(`✅ تعلّمت! عدّلت ${n} عمليات لـ«${cat(chosen).name}»`);
+      }
+      const dv = $('#e-debt', p)?.value;
+      if (dv === 'unlink') store.unlinkTxDebt(id);
+      else if (dv?.startsWith('d:')) {
+        const debt = store.getState().debts.find((x) => x.id === dv.slice(2));
+        const isIncome = ($('#e-type', p).value) === 'income';
+        const role = (debt.direction === 'lent') === isIncome ? 'payment' : (debt.principalTxId ? null : 'principal');
+        if (role) { store.attachDebtTx(debt.id, id, role); toast(`✅ انربطت بدين «${esc(debt.person)}»`); } else toast('هذي العملية ما تناسب هذا الدين');
+      } else if (dv?.startsWith('new:')) {
+        closeSheet();
+        const cur = store.getState().txs.find((x) => x.id === id);
+        return openDebtSheet({ direction: dv.slice(4), amount: cur.amount, date: cur.date, person: cur.merchant && !/^\d+$/.test(cur.merchant) ? cur.merchant : '', txId: id });
       }
       if (chosenBucket !== curBucket) {
         const n = store.setBucket(id, chosenBucket, $('#bk-remember', p)?.checked);
@@ -398,6 +415,7 @@ function todayCard() {
     </div>
     ${(s.investments || []).filter((i) => i.variable && i.cap > 0).map((i) => { const c = capStatus(i);
       return c.pct >= 80 ? `<div class="alert small">${c.left < 0 ? `🚨 تجاوزت سقف «${esc(i.name)}» بـ ${money(-c.left, 0)} ر.س` : `⚠️ «${esc(i.name)}»: باقي ${money(c.left, 0)} ر.س من سقف ${money(c.cap, 0)}`}</div>` : ''; }).join('')}
+    ${(() => { const o = budget.debtSummary(s.debts).overdue; return o.length ? `<div class="alert small">🤝 عندك ${o.length} ${o.length === 1 ? 'دين متأخر' : 'ديون متأخرة'} (${o.map((d) => esc(d.person)).join('، ')})</div>` : ''; })()}
     ${r.remainingToday < 0 ? `<div class="alert small">⚠️ تجاوزت حدك اليوم بـ ${money(-r.remainingToday, 0)} ر.س${p.rollover ? '، وبينخصم من حد الأيام الجاية' : ''}</div>` : ''}
     <div class="today-grid small">
       <div><b>${daysToSalary}</b><span>يوم للراتب</span></div>
@@ -602,6 +620,7 @@ function renderCommitments() {
   const paidOf = (c) => budget.paidInRange(c, s.txs, s.commitments, cyc);
   const needSample = list.filter(({ c, st }) => st.active && !c.signature && !c.keyword);
   view.innerHTML = `
+    ${debtsSection()}
     ${investmentsSection(cyc)}
     <div class="card hero"><div class="muted small">التزاماتك الشهرية</div>
       <div class="total">${money(total, 0)} <small>ر.س / شهر</small></div>
@@ -630,6 +649,9 @@ function renderCommitments() {
       <span><button class="chip" data-sub="${i}">إضافة</button> <button class="chip" data-dismiss="${esc(x.key)}">مو اشتراك</button></span></div>`).join('')}</div>` : ''}`;
   $('#add-c').onclick = () => openCommitmentSheet();
   $('#add-inv').onclick = () => openInvestmentSheet();
+  $('#add-lent').onclick = () => openDebtSheet({ direction: 'lent' });
+  $('#add-borrowed').onclick = () => openDebtSheet({ direction: 'borrowed' });
+  view.querySelectorAll('[data-debt]').forEach((x) => x.onclick = () => openDebtDetail(x.dataset.debt));
   view.querySelectorAll('[data-inv]').forEach((x) => x.onclick = () => openInvestmentSheet(s.investments.find((i) => i.id === x.dataset.inv)));
   view.querySelectorAll('[data-inv-link]').forEach((x) => x.onclick = async (e) => {
     e.stopPropagation();
@@ -748,6 +770,134 @@ function openInvestmentSheet(inv = {}) {
 }
 const ovRow = (k, v) => `<div class="ov-row"><input type="month" data-ov-month value="${esc(k)}">
   <input type="text" data-num inputmode="decimal" data-ov-amount value="${esc(v)}" placeholder="المبلغ"><button class="chip" data-ov-del>✕</button></div>`;
+
+// ---------------- التسليف ----------------
+const dayFmt = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short', year: 'numeric' });
+const todayInput = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const fromInput = (v) => new Date(`${v || todayInput()}T12:00:00`).toISOString();
+
+function debtRow(d, now = new Date()) {
+  const rem = budget.debtRemaining(d), paid = budget.debtPaid(d);
+  const late = rem > 0 && d.dueDate && new Date(`${d.dueDate}T23:59:59`) < now;
+  const lent = d.direction === 'lent';
+  return `<li class="row" data-debt="${d.id}"><div class="ic" style="background:${lent ? '#2b8a3e22' : '#c92a2a22'}">${lent ? '📤' : '📥'}</div>
+    <div class="main"><div class="title wrap">${esc(d.person)}${late ? '<span class="badge warn">متأخر</span>' : ''}</div>
+      <div class="meta wrap">${esc(dayFmt.format(new Date(d.date)))}${d.note ? ` · ${esc(d.note)}` : ''}${d.dueDate && rem > 0 && !late ? ` · موعد السداد ${esc(dayFmt.format(new Date(`${d.dueDate}T12:00:00`)))}` : ''}${paid > 0 && rem > 0 ? ` · انسدد ${money(paid, 0)} من ${money(d.amount, 0)}` : ''}</div>
+      ${paid > 0 && rem > 0 ? pctBar((paid / d.amount) * 100, lent ? 'var(--good)' : 'var(--danger)') : ''}</div>
+    <div class="amt ${lent ? 'good' : 'bad'}">${money(rem, 0)} ر.س</div></li>`;
+}
+
+function debtsSection() {
+  const s = store.getState();
+  const sm = budget.debtSummary(s.debts);
+  const has = s.debts.length > 0;
+  return `<div class="card debt-card"><h2>🤝 التسليف <small>— اللي لك واللي عليك</small></h2>
+    ${has ? `<div class="stats stats3">
+      <div><b class="good">${money(sm.toMe, 0)}</b><span>لي عند الناس</span></div>
+      <div><b class="bad">${money(sm.iOwe, 0)}</b><span>عليّ للناس</span></div>
+      <div><b class="${sm.net >= 0 ? 'good' : 'bad'}">${sm.net < 0 ? '−' : ''}${money(Math.abs(sm.net), 0)}</b><span>الصافي</span></div></div>
+      ${sm.lent.length ? `<div class="sec-title">📤 سلّفتهم (لي)</div><ul class="list">${sm.lent.map((d) => debtRow(d)).join('')}</ul>` : ''}
+      ${sm.borrowed.length ? `<div class="sec-title">📥 استلفت منهم (عليّ)</div><ul class="list">${sm.borrowed.map((d) => debtRow(d)).join('')}</ul>` : ''}
+      ${!sm.lent.length && !sm.borrowed.length ? '<p class="small muted" style="margin:10px 0 0">كل ديونك مسدّدة 🎉</p>' : ''}
+      ${sm.settled.length ? `<details style="margin-top:8px"><summary class="small muted">المسدّدة (${sm.settled.length})</summary><ul class="list">${sm.settled.map((d) => debtRow(d)).join('')}</ul></details>` : ''}`
+      : '<p class="small muted">سجّل اللي سلّفته لأحد أو استلفته، وأتابع لك كم باقي ومن عليه. تسليفك لغيرك ما ينحسب من صرفك.</p>'}
+    <div class="btns" style="margin-top:10px"><button class="btn" id="add-lent">📤 سلّفت أحد</button><button class="btn" id="add-borrowed">📥 استلفت من أحد</button></div></div>`;
+}
+
+function openDebtSheet(d = {}) {
+  const editing = !!d.id;
+  let dir = d.direction || 'lent';
+  openSheet(`<h3>${editing ? 'تعديل الدين' : 'دين جديد'}</h3>
+    <div class="seg" id="d-dir"><button data-d="lent" class="${dir === 'lent' ? 'active' : ''}">📤 سلّفت</button><button data-d="borrowed" class="${dir === 'borrowed' ? 'active' : ''}">📥 استلفت</button></div>
+    <label class="field"><span id="d-who">${dir === 'lent' ? 'سلّفت مين؟' : 'استلفت من مين؟'}</span><input type="text" id="d-person" value="${esc(d.person || '')}" placeholder="الاسم"></label>
+    <label class="field">المبلغ (ر.س)<input type="text" data-num inputmode="decimal" id="d-amount" value="${d.amount ?? ''}"></label>
+    <label class="field">التاريخ<input type="date" id="d-date" value="${d.date ? new Date(d.date).toISOString().slice(0, 10) : todayInput()}"></label>
+    <label class="field">موعد السداد المتوقع <span class="small">(اختياري، أنبّهك لو تأخر)</span><input type="date" id="d-due" value="${esc(d.dueDate || '')}"></label>
+    <label class="field">ملاحظة <span class="small">(اختياري)</span><input type="text" id="d-note" value="${esc(d.note || '')}" placeholder="مثلاً: سلفة للسيارة"></label>
+    ${editing ? '' : `<label class="field">رسالة البنك للتحويل <span class="small">(اختياري: عشان ما ينحسب صرف من ميزانيتك)</span>
+      <textarea id="d-sample" dir="auto" style="min-height:80px"></textarea></label>
+      <button class="btn block" id="d-paste" style="margin-top:0">📋 لصق من الحافظة</button>`}
+    <button class="btn primary block" id="d-save">حفظ</button>`, (p) => {
+    p.querySelectorAll('#d-dir [data-d]').forEach((b) => b.onclick = () => {
+      dir = b.dataset.d; p.querySelectorAll('#d-dir [data-d]').forEach((x) => x.classList.toggle('active', x === b));
+      $('#d-who', p).textContent = dir === 'lent' ? 'سلّفت مين؟' : 'استلفت من مين؟';
+    });
+    $('#d-paste', p)?.addEventListener('click', async () => { try { $('#d-sample', p).value = await navigator.clipboard.readText(); } catch { toast('الصقها يدوياً'); } });
+    $('#d-save', p).onclick = () => {
+      const person = $('#d-person', p).value.trim();
+      const amount = parseFloat($('#d-amount', p).value);
+      if (!person || !(amount > 0)) return toast('اكتب الاسم والمبلغ');
+      const saved = store.saveDebt({ id: d.id, direction: dir, person, amount, date: fromInput($('#d-date', p).value), dueDate: $('#d-due', p).value || '', note: $('#d-note', p).value.trim() });
+      const sample = $('#d-sample', p)?.value.trim();
+      const fromTx = d.txId;
+      let note = '';
+      if (sample) {
+        const r = store.debtMessageTx(sample);
+        if (r.ok) { store.attachDebtTx(saved.id, r.tx.id, dir === 'lent' ? 'principal' : 'principal'); note = dir === 'lent' ? ' — وتحويلها ما ينحسب صرف' : ''; }
+        else note = ' — بس ما قدرت أقرأ رسالة البنك';
+      } else if (fromTx) { store.attachDebtTx(saved.id, fromTx, 'principal'); note = dir === 'lent' ? ' — وتحويلها ما ينحسب صرف' : ''; }
+      closeSheet();
+      toast(`✅ انحفظ: ${dir === 'lent' ? 'سلّفت' : 'استلفت من'} ${esc(person)} ${money(amount, 0)} ر.س${note}`, 5000);
+    };
+  });
+}
+
+function openDebtDetail(id) {
+  const d = store.getState().debts.find((x) => x.id === id);
+  if (!d) return;
+  const lent = d.direction === 'lent';
+  const rem = budget.debtRemaining(d), paid = budget.debtPaid(d);
+  const pays = [...d.payments].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const remind = `السلام عليكم ${d.person}، تذكير بسيط بمبلغ ${fmt(rem, 2)} ريال عليك لي${d.note ? ` (${d.note})` : ''}. الله يجزاك خير.`;
+  openSheet(`<h3>${lent ? '📤' : '📥'} ${esc(d.person)}</h3>
+    <p class="muted small">${lent ? 'سلّفته' : 'استلفت منه'} ${money(d.amount, 0)} ر.س في ${esc(dayFmt.format(new Date(d.date)))}${d.note ? ` · ${esc(d.note)}` : ''}</p>
+    <div class="stats stats3"><div><b>${money(d.amount, 0)}</b><span>الأصل</span></div><div><b class="good">${money(paid, 0)}</b><span>انسدد</span></div>
+      <div><b class="${rem > 0 ? (lent ? 'good' : 'bad') : ''}">${money(rem, 0)}</b><span>المتبقي</span></div></div>
+    ${pctBar((paid / d.amount) * 100, lent ? 'var(--good)' : 'var(--danger)')}
+    ${d.dueDate && rem > 0 ? `<p class="small ${new Date(`${d.dueDate}T23:59:59`) < new Date() ? 'bad' : 'muted'}">📅 موعد السداد: ${esc(dayFmt.format(new Date(`${d.dueDate}T12:00:00`)))}${new Date(`${d.dueDate}T23:59:59`) < new Date() ? ' (متأخر)' : ''}</p>` : ''}
+    ${rem > 0 ? `<button class="btn primary block" id="dd-pay">💰 ${lent ? 'استلمت سداد' : 'سدّدت'}</button>` : '<p class="good small">✅ مسدّد بالكامل</p>'}
+    ${rem > 0 && lent ? `<a class="btn block" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(remind)}">📲 ذكّره بواتساب</a>` : ''}
+    <div class="sec-title">السجل</div>
+    <ul class="list">${pays.map((x) => `<li class="row" style="cursor:default"><div class="main"><div class="title">${lent ? 'استلمت' : 'سدّدت'}${x.txId ? ' <span class="badge">من رسالة بنك</span>' : ''}</div>
+      <div class="meta">${esc(dayFmt.format(new Date(x.date)))}</div></div><div class="amt good">${money(x.amount, 0)} ر.س</div>
+      <button class="chip" data-del-pay="${x.id}" aria-label="حذف">✕</button></li>`).join('') || '<li class="muted small" style="padding:8px 0">ما فيه سداد للحين</li>'}</ul>
+    <div class="btns" style="margin-top:10px"><button class="btn" id="dd-edit">تعديل</button><button class="btn danger" id="dd-del">حذف</button></div>`, (p) => {
+    $('#dd-pay', p)?.addEventListener('click', () => openPaymentSheet(d.id));
+    $('#dd-edit', p).onclick = () => openDebtSheet(d);
+    $('#dd-del', p).onclick = () => { if (confirm('تحذف هذا الدين مع سجله؟')) { store.deleteDebt(d.id); closeSheet(); } };
+    p.querySelectorAll('[data-del-pay]').forEach((b) => b.onclick = () => { store.deleteDebtPayment(d.id, b.dataset.delPay); openDebtDetail(d.id); });
+  });
+}
+
+function openPaymentSheet(id) {
+  const d = store.getState().debts.find((x) => x.id === id);
+  const lent = d.direction === 'lent';
+  const rem = budget.debtRemaining(d);
+  openSheet(`<h3>${lent ? 'استلمت سداد من' : 'سدّدت لـ'} ${esc(d.person)}</h3>
+    <p class="muted small">المتبقي ${money(rem, 0)} ر.س</p>
+    <label class="field">المبلغ (ر.س)<input type="text" data-num inputmode="decimal" id="p-amount" value="${rem}"></label>
+    <label class="field">التاريخ<input type="date" id="p-date" value="${todayInput()}"></label>
+    <label class="field">رسالة البنك <span class="small">(اختياري: لو لصقتها أستخدم مبلغها وتاريخها)</span>
+      <textarea id="p-sample" dir="auto" style="min-height:80px"></textarea></label>
+    <button class="btn block" id="p-paste" style="margin-top:0">📋 لصق من الحافظة</button>
+    <button class="btn primary block" id="p-save">حفظ</button>`, (p) => {
+    $('#p-paste', p).onclick = async () => { try { $('#p-sample', p).value = await navigator.clipboard.readText(); } catch { toast('الصقها يدوياً'); } };
+    $('#p-save', p).onclick = () => {
+      const sample = $('#p-sample', p).value.trim();
+      if (sample) {
+        const r = store.debtMessageTx(sample);
+        if (!r.ok) return toast('ما قدرت أقرأ الرسالة — تأكد إنها رسالة التحويل كاملة');
+        store.attachDebtTx(id, r.tx.id, 'payment');
+        closeSheet(); return toast(`✅ سجّلت السداد ${money(r.tx.amount)} ر.س${lent ? '' : ' (ينحسب التزام، مو من حدك اليومي)'}`, 5000);
+      }
+      const amount = parseFloat($('#p-amount', p).value);
+      if (!(amount > 0)) return toast('اكتب المبلغ');
+      if (amount > rem + 0.004) return toast(`المبلغ أكبر من المتبقي (${fmt(rem, 2)})`);
+      store.addDebtPayment(id, { amount, date: fromInput($('#p-date', p).value) });
+      closeSheet(); toast(budget.debtRemaining(store.getState().debts.find((x) => x.id === id)) <= 0.004 ? '✅ انسدد الدين بالكامل 🎉' : '✅ انحفظ السداد');
+    };
+  });
+}
 
 function linkResult(r, c) {
   if (r.ok) {
