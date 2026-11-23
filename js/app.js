@@ -66,6 +66,18 @@ document.querySelectorAll('.tabbar button').forEach((b) => b.addEventListener('c
   render(); scrollTo(0, 0);
 }));
 $('#add-btn').addEventListener('click', openAddSheet);
+// ضغطة وحدة: يقرأ رسالة البنك المنسوخة ويضيفها على طول
+$('#paste-btn').addEventListener('click', async () => {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch { /* المستخدم رفض أو المتصفح ما يدعم */ }
+  const items = splitBatch(text || '');
+  if (!items.length) {
+    openAddSheet();
+    return toast('انسخ رسالة البنك أولاً، أو الصقها هنا يدوياً');
+  }
+  if (items.length === 1) announce(store.addMessage(items[0].text, items[0]));
+  else importReport(store.addMany(items));
+});
 store.subscribe(() => render());
 
 function visibleTxs() {

@@ -19,7 +19,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: calc(10px + env(safe-area-inset-top)) 18px 10px; background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 .topbar h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.5px; }
-.icon-btn { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--primary); color: #fff; font-size: 22px; cursor: pointer; }
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.paste-btn { height: 40px; border: 0; border-radius: 99px; padding: 0 16px; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer; }
+@media (prefers-color-scheme: dark) { .paste-btn { color: #062a26; } }
+.icon-btn { background: var(--track) !important; color: var(--text) !important;  width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--primary); color: #fff; font-size: 22px; cursor: pointer; }
 
 main { padding: 4px 14px 20px; max-width: 640px; margin: 0 auto; }
 .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 12px; }
