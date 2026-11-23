@@ -240,7 +240,7 @@ export function applySetup(code) {
   let added = 0, updated = 0;
   for (const inv of json.investments || []) {
     const ex = state.investments.find((x) => x.name === inv.name);
-    if (ex) { Object.assign(ex, { amount: inv.amount, variable: !!inv.variable, overrides: inv.overrides || {} }); updated++; }
+    if (ex) { Object.assign(ex, { amount: inv.amount, variable: !!inv.variable, overrides: inv.overrides || {}, cap: +inv.cap || 0 }); updated++; }
     else { state.investments.push({ overrides: {}, ...inv, id: uid() }); added++; }
   }
   save();

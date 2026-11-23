@@ -81,7 +81,11 @@ function announce(res) {
     const t = res.tx, c = cat(t.category);
     const cm = t.commitmentId && store.getState().commitments.find((x) => x.id === t.commitmentId);
     const iv = t.investmentId && store.getState().investments.find((x) => x.id === t.investmentId);
-    if (iv) toast(`📈 تحويل استثمار «${esc(iv.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب صرف${iv.variable ? '، وحدك اليومي اتعدّل' : ''}`, 5000);
+    if (iv && iv.variable && iv.cap > 0) {
+      const c = capStatus(iv);
+      toast(c.left < 0 ? `🚨 تجاوزت سقف «${esc(iv.name)}» الشهري (${money(iv.cap, 0)}) بـ <b>${money(-c.left, 0)} ر.س</b> — حوّلت هالدورة ${money(c.got, 0)}`
+        : `🎲 تحويل «${esc(iv.name)}»: <b>${money(t.amount)}</b> — ${c.pct >= 80 ? '⚠️ ' : ''}باقي لك من السقف ${money(c.left, 0)} ر.س من ${money(iv.cap, 0)}، وحدك اليومي اتعدّل`, 7000);
+    } else if (iv) toast(`📈 تحويل استثمار «${esc(iv.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب صرف${iv.variable ? '، وحدك اليومي اتعدّل' : ''}`, 5000);
     else if (cm) toast(`📌 سداد التزام «${esc(cm.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب من حدك اليومي`);
     else toast(`${c.icon} انضافت: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ${esc(t.merchant || 'بدون اسم')} (${c.name})`);
   } else if (res.status === 'duplicate') toast('هذي الرسالة مضافة من قبل 👌');
@@ -380,6 +384,8 @@ function todayCard() {
       <span>صرفت اليوم ${money(r.spentToday, 0)}</span>
       <span>حدك ${money(p.daily, 0)}${p.rollover && Math.abs(r.carry) >= 1 ? ` ${r.carry > 0 ? '+' : '−'} ${money(Math.abs(r.carry), 0)} مرحّل` : ''}</span>
     </div>
+    ${(s.investments || []).filter((i) => i.variable && i.cap > 0).map((i) => { const c = capStatus(i);
+      return c.pct >= 80 ? `<div class="alert small">${c.left < 0 ? `🚨 تجاوزت سقف «${esc(i.name)}» بـ ${money(-c.left, 0)} ر.س` : `⚠️ «${esc(i.name)}»: باقي ${money(c.left, 0)} ر.س من سقف ${money(c.cap, 0)}`}</div>` : ''; }).join('')}
     ${r.remainingToday < 0 ? `<div class="alert small">⚠️ تجاوزت حدك اليوم بـ ${money(-r.remainingToday, 0)} ر.س${p.rollover ? '، وبينخصم من حد الأيام الجاية' : ''}</div>` : ''}
     <div class="today-grid small">
       <div><b>${daysToSalary}</b><span>يوم للراتب</span></div>
@@ -652,12 +658,27 @@ function investmentsSection(cyc) {
         const got = done[i.id] || 0;
         return `<li class="row" data-inv="${i.id}"><div class="ic" style="background:var(--track)">${i.variable ? '🎲' : '📈'}</div>
           <div class="main"><div class="title wrap">${esc(i.name)}${temp ? `<span class="badge warn">مؤقت بدل ${fmt(i.amount)}</span>` : ''}</div>
-          <div class="meta wrap">${i.variable ? `متغيّر — تحويلاته تنقص حدك اليومي${got ? ` · حوّلت هالدورة ${money(got, 0)} ر.س` : ''}`
+          <div class="meta wrap">${i.variable ? (i.cap > 0 ? capLine(got, i.cap) : `متغيّر — تحويلاته تنقص حدك اليومي${got ? ` · حوّلت هالدورة ${money(got, 0)} ر.س` : ''}`)
             : got >= amt && amt ? `✅ تحوّل هالدورة (${money(got, 0)})` : got ? `حوّلت ${money(got, 0)} من ${money(amt, 0)}` : i.signature ? '⏳ ما وصلت رسالة التحويل هالدورة' : ''}</div>
           ${!i.signature ? `<button class="chip small" data-inv-link="${i.id}" style="margin-top:4px">📩 لصق رسالة التحويل</button>` : ''}</div>
-          <div class="amt">${i.variable ? '—' : `${money(amt, 0)} ر.س`}</div></li>`;
+          <div class="amt">${i.variable ? (i.cap > 0 ? `<span class="small muted">سقف</span> ${money(i.cap, 0)}` : '—') : `${money(amt, 0)} ر.س`}</div></li>`;
       }).join('')}</ul>` : '<p class="small muted">أضف محافظك الاستثمارية: مبلغها ينخصم من الراتب قبل الحد اليومي، وتحويلاتها ما تنحسب صرف.</p>'}
     <button class="btn block" id="add-inv">＋ إضافة محفظة</button></div>`;
+}
+
+function capLine(got, cap) {
+  const pct = (got / cap) * 100;
+  const left = cap - got;
+  return `${money(got, 0)} من سقف ${money(cap, 0)} · ${left >= 0 ? `باقي ${money(left, 0)}` : `<b class="bad">تجاوزت بـ ${money(-left, 0)}</b>`}
+    ${pctBar(pct, pct > 100 ? 'var(--danger)' : pct >= 80 ? '#f59f00' : 'var(--primary)')}`;
+}
+
+/** حالة سقف الحسابات المتغيّرة في الدورة الحالية */
+function capStatus(inv) {
+  const s = store.getState();
+  const cyc = budget.cycleFor(new Date(), s.settings.budget.payday || 27);
+  const got = budget.investedInRange([inv], s.txs, cyc, s.settings.rates)[inv.id] || 0;
+  return { got, cap: inv.cap, left: inv.cap - got, pct: (got / inv.cap) * 100 };
 }
 
 function openInvestmentSheet(inv = {}) {
@@ -666,6 +687,8 @@ function openInvestmentSheet(inv = {}) {
   openSheet(`<h3>${inv.id ? 'تعديل محفظة' : 'محفظة جديدة'}</h3>
     <label class="field">الاسم<input type="text" id="i-name" value="${esc(inv.name || '')}" placeholder="مثلاً: المحفظة التقنية"></label>
     <label class="switch"><input type="checkbox" id="i-var" ${inv.variable ? 'checked' : ''}> مبلغ متغيّر (مثل حساب الأوبشن): ما له مبلغ ثابت، وكل تحويل له ينقص حدك اليومي لباقي الدورة</label>
+    <label class="field" id="i-cap-wrap">السقف الشهري (ر.س) <span class="small">— أنبّهك لما تقرب منه وإذا تجاوزته</span>
+      <input type="text" data-num inputmode="decimal" id="i-cap" value="${inv.cap || ''}" placeholder="بدون سقف"></label>
     <div id="i-fixed">
       <label class="field">المبلغ الشهري الثابت (ر.س)<input type="text" data-num inputmode="decimal" id="i-amount" value="${inv.amount ?? ''}"></label>
       <label class="field">مبالغ مؤقتة لدورات معيّنة <span class="small">(بعدها يرجع للمبلغ الثابت تلقائياً)</span></label>
@@ -678,7 +701,7 @@ function openInvestmentSheet(inv = {}) {
     <button class="btn block" id="i-paste" style="margin-top:0">📋 لصق من الحافظة</button>
     <button class="btn primary block" id="i-save">حفظ</button>
     ${inv.id ? '<button class="btn danger block" id="i-del">حذف المحفظة</button>' : ''}`, (p) => {
-    const sync = () => { $('#i-fixed', p).hidden = $('#i-var', p).checked; };
+    const sync = () => { $('#i-fixed', p).hidden = $('#i-var', p).checked; $('#i-cap-wrap', p).hidden = !$('#i-var', p).checked; };
     $('#i-var', p).onchange = sync; sync();
     const bindRows = () => p.querySelectorAll('[data-ov-del]').forEach((b) => b.onclick = () => b.closest('.ov-row').remove());
     bindRows();
@@ -694,7 +717,8 @@ function openInvestmentSheet(inv = {}) {
         const k = r.querySelector('[data-ov-month]').value; const v = parseFloat(r.querySelector('[data-ov-amount]').value);
         if (/^\d{4}-\d{2}$/.test(k) && v >= 0) overrides[k] = v;
       });
-      const saved = store.saveInvestment({ id: inv.id, name, variable, amount: variable ? 0 : amount, overrides: variable ? {} : overrides });
+      const saved = store.saveInvestment({ id: inv.id, name, variable, amount: variable ? 0 : amount, overrides: variable ? {} : overrides,
+        cap: variable ? parseFloat($('#i-cap', p).value) || 0 : 0 });
       const sample = $('#i-sample', p).value.trim();
       closeSheet();
       if (sample && sample !== (inv.sample || '')) linkResult(store.linkInvestmentMessage(saved.id, sample), saved);
