@@ -1,21 +1,21 @@
 // تصنيفات حِسبة + قاموس التجار + منطق التصنيف الذكي والتعلّم
 
 export const CATEGORIES = {
-  restaurants: { name: 'مطاعم وكافيهات', icon: '🍔', color: '#e8590c' },
-  delivery:    { name: 'تطبيقات توصيل',  icon: '🛵', color: '#f08c00' },
-  groceries:   { name: 'بقالة وسوبرماركت', icon: '🛒', color: '#2f9e44' },
-  transport:   { name: 'مواصلات ووقود',  icon: '⛽', color: '#1971c2' },
-  shopping:    { name: 'تسوق',           icon: '🛍️', color: '#ae3ec9' },
-  entertainment:{ name: 'ترفيه',         icon: '🎬', color: '#d6336c' },
-  subscriptions:{ name: 'اشتراكات',       icon: '🔁', color: '#7048e8' },
-  health:      { name: 'صحة وصيدليات',   icon: '💊', color: '#0c8599' },
-  bills:       { name: 'فواتير واتصالات', icon: '🧾', color: '#5c940d' },
-  travel:      { name: 'سفر وفنادق',      icon: '✈️', color: '#1098ad' },
-  education:   { name: 'تعليم',           icon: '📚', color: '#4263eb' },
-  government:  { name: 'حكومي ورسوم',     icon: '🏛️', color: '#495057' },
-  transfers:   { name: 'تحويلات',         icon: '💸', color: '#868e96' },
-  cash:        { name: 'سحب نقدي',        icon: '🏧', color: '#5f3dc4' },
-  other:       { name: 'أخرى',            icon: '📦', color: '#adb5bd' },
+  restaurants: { name: 'مطاعم وكافيهات', icon: '🍔', color: '#ff9500' },
+  delivery:    { name: 'تطبيقات توصيل',  icon: '🛵', color: '#ff5e3a' },
+  groceries:   { name: 'بقالة وسوبرماركت', icon: '🛒', color: '#34c759' },
+  transport:   { name: 'مواصلات ووقود',  icon: '⛽', color: '#007aff' },
+  shopping:    { name: 'تسوق',           icon: '🛍️', color: '#af52de' },
+  entertainment:{ name: 'ترفيه',         icon: '🎬', color: '#ff2d55' },
+  subscriptions:{ name: 'اشتراكات',       icon: '🔁', color: '#5856d6' },
+  health:      { name: 'صحة وصيدليات',   icon: '💊', color: '#30b0c7' },
+  bills:       { name: 'فواتير واتصالات', icon: '🧾', color: '#a2845e' },
+  travel:      { name: 'سفر وفنادق',      icon: '✈️', color: '#32ade6' },
+  education:   { name: 'تعليم',           icon: '📚', color: '#e6a700' },
+  government:  { name: 'حكومي ورسوم',     icon: '🏛️', color: '#8e8e93' },
+  transfers:   { name: 'تحويلات',         icon: '💸', color: '#00b8ae' },
+  cash:        { name: 'سحب نقدي',        icon: '🏧', color: '#6e7ca0' },
+  other:       { name: 'أخرى',            icon: '📦', color: '#a1a1a6' },
 };
 
 // كلمات مفتاحية لتجار معروفين (حروف صغيرة، تطابق جزئي)

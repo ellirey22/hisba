@@ -4,6 +4,7 @@ import * as store from './store.js';
 import { periodRange, inRange, totalsByCategory, dailySeries, monthlyTrend, topMerchants, detectSubscriptions, isExpense, sar } from './insights.js';
 import { donut, bars, fmt } from './charts.js';
 import * as budget from './budget.js';
+import { svg, autoIconify } from './icons.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const view = $('#view');
@@ -49,12 +50,94 @@ function toast(msg, ms = 3500) {
 
 function openSheet(html, onMount) {
   const s = $('#sheet');
-  $('.sheet-panel', s).innerHTML = html;
+  s.classList.remove('closing');
+  const panel = $('.sheet-panel', s);
+  panel.style.transform = '';
+  panel.innerHTML = html;
   s.hidden = false;
-  onMount?.($('.sheet-panel', s));
+  panel.scrollTop = 0;
+  enhanceSegs(panel);
+  onMount?.(panel);
 }
-function closeSheet() { $('#sheet').hidden = true; }
+function closeSheet() {
+  const s = $('#sheet');
+  if (s.hidden || s.classList.contains('closing')) return;
+  s.classList.add('closing');
+  setTimeout(() => { if (s.classList.contains('closing')) { s.hidden = true; s.classList.remove('closing'); $('.sheet-panel', s).style.transform = ''; } }, 270);
+}
 $('#sheet').addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeSheet(); });
+
+// سحب النافذة للأسفل لإغلاقها (من المقبض أو لما تكون في أعلى القائمة)
+(() => {
+  const panel = $('.sheet-panel');
+  let y0 = null, dy = 0, t0 = 0;
+  panel.addEventListener('touchstart', (e) => {
+    const top = e.touches[0].clientY - panel.getBoundingClientRect().top;
+    y0 = top < 56 || panel.scrollTop <= 0 ? e.touches[0].clientY : null; dy = 0; t0 = Date.now();
+    panel.style.transition = 'none'; panel.style.animation = 'none';
+  }, { passive: true });
+  panel.addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy > 0 && (panel.scrollTop <= 0 || dy > 0)) { panel.style.transform = `translateY(${dy * 0.9}px)`; if (e.cancelable && dy > 6 && panel.scrollTop <= 0) e.preventDefault(); }
+  }, { passive: false });
+  panel.addEventListener('touchend', () => {
+    if (y0 == null) return;
+    panel.style.transition = 'transform .4s cubic-bezier(.34,1.45,.5,1)';
+    const fast = dy / Math.max(Date.now() - t0, 1) > 0.6;
+    if (dy > 120 || (fast && dy > 40)) closeSheet(); else panel.style.transform = '';
+    y0 = null; setTimeout(() => { panel.style.transition = ''; panel.style.animation = ''; }, 420);
+  });
+})();
+
+// ---------------- لمسات التصميم ----------------
+// مفاتيح التبديل تنزلق: نحفظ آخر موضع ونتحرك منه للموضع الجديد
+const segMemory = new Map();
+function enhanceSegs(root = view) {
+  root.querySelectorAll('.seg').forEach((seg, n) => {
+    const active = seg.querySelector('button.active'); if (!active) return;
+    seg.classList.add('js');
+    let thumb = seg.querySelector('.thumb');
+    if (!thumb) { thumb = document.createElement('i'); thumb.className = 'thumb'; seg.prepend(thumb); }
+    const key = `${ui.tab}:${root === view ? n : 'sheet' + n}`;
+    const place = (b) => { thumb.style.width = `${b.offsetWidth}px`; thumb.style.transform = `translateX(${b.offsetLeft - 2}px)`; };
+    const prev = segMemory.get(key);
+    if (prev && prev.el !== active.textContent) {
+      thumb.style.transition = 'none'; thumb.style.width = `${prev.w}px`; thumb.style.transform = `translateX(${prev.x}px)`;
+      void thumb.offsetWidth; thumb.style.transition = '';
+    }
+    requestAnimationFrame(() => place(active));
+    segMemory.set(key, { el: active.textContent, x: active.offsetLeft - 2, w: active.offsetWidth });
+  });
+}
+
+// الأرقام الكبيرة تعدّ من الصفر
+function countUp(root = view) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  root.querySelectorAll('.total > .num, .today-amt > .num, .stats b .num, .today-grid b .num').forEach((el) => {
+    const raw = el.textContent.trim(); const target = parseFloat(raw.replace(/,/g, '').replace('−', '-'));
+    if (!isFinite(target) || target === 0) return;
+    const dec = (raw.split('.')[1] || '').length; const nf = new Intl.NumberFormat('ar-SA-u-nu-latn', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    const t0 = performance.now(), dur = 900;
+    const tick = (now) => {
+      const k = Math.min((now - t0) / dur, 1), e = 1 - Math.pow(1 - k, 4);
+      el.textContent = nf.format(target * e); if (k < 1) requestAnimationFrame(tick); else el.textContent = raw;
+    };
+    el.textContent = nf.format(0); requestAnimationFrame(tick);
+  });
+}
+
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div'); box.className = 'confetti';
+  const colors = ['#34c759', '#ff9500', '#007aff', '#ff2d55', '#af52de', '#ffcc00', '#18b9a5'];
+  for (let i = 0; i < 46; i++) {
+    const p = document.createElement('i');
+    p.style.cssText = `left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-duration:${1.3 + Math.random() * 1.3}s;animation-delay:${Math.random() * .25}s;--dx:${(Math.random() - .5) * 160}px;--rot:${(Math.random() - .5) * 900}deg`;
+    box.appendChild(p);
+  }
+  document.body.appendChild(box); setTimeout(() => box.remove(), 3200);
+}
 
 // ---------------- الاستقبال من الاختصار ----------------
 function ingestFromURL() {
@@ -71,13 +154,14 @@ function trySetup(text) {
   try {
     const r = store.applySetup(text);
     toast(`✅ تم الإعداد: ${r.added} محفظة جديدة${r.updated ? ` و${r.updated} تحدّثت` : ''}${r.budget ? '، وضبطت يوم الراتب وبداية الحسبة' : ''}`, 6000);
-    ui.tab = 'commits'; syncTabs(); render();
+    ui.tab = 'commits'; syncTabs(); render(); confetti();
   } catch { toast('كود الإعداد غير صالح — انسخه كامل'); }
   return true;
 }
 
 function announce(res) {
   if (res.status === 'added') {
+    ui.flashId = res.tx.id; setTimeout(() => { ui.flashId = null; }, 2500);
     const t = res.tx, c = cat(t.category);
     const cm = t.commitmentId && store.getState().commitments.find((x) => x.id === t.commitmentId);
     const iv = t.investmentId && store.getState().investments.find((x) => x.id === t.investmentId);
@@ -96,8 +180,8 @@ function announce(res) {
 // ---------------- التنقّل ----------------
 document.querySelectorAll('.tabbar button').forEach((b) => b.addEventListener('click', () => {
   ui.tab = b.dataset.tab;
-  document.querySelectorAll('.tabbar button').forEach((x) => x.classList.toggle('active', x === b));
-  render(); scrollTo(0, 0);
+  syncTabs();
+  render(); scrollTo({ top: 0, behavior: 'smooth' });
 }));
 $('#add-btn').addEventListener('click', openAddSheet);
 // ضغطة وحدة: يقرأ رسالة البنك المنسوخة ويضيفها على طول
@@ -127,8 +211,15 @@ function cardName(bank, card) {
   return card ? `${bank} •${card}` : bank;
 }
 
+let lastSig = '';
 function render() {
+  // حركة الدخول تشتغل بس لما تتغير الشاشة (مو مع كل تعديل بسيط)
+  const sig = `${ui.tab}|${ui.rTab}|${ui.period}|${ui.offset}|${ui.rOffset}`;
+  const entering = sig !== lastSig; lastSig = sig;
+  view.classList.toggle('enter', entering);
   ({ home: renderHome, txs: renderTxs, reports: renderReports, commits: renderCommitments, settings: renderSettings })[ui.tab]();
+  enhanceSegs(view);
+  if (entering) countUp(view);
 }
 
 // ---------------- الملخص ----------------
@@ -211,7 +302,9 @@ function renderHome() {
 }
 
 function syncTabs() {
-  document.querySelectorAll('.tabbar button').forEach((x) => x.classList.toggle('active', x.dataset.tab === ui.tab));
+  const btns = [...document.querySelectorAll('.tabbar button')];
+  btns.forEach((x) => x.classList.toggle('active', x.dataset.tab === ui.tab));
+  $('#tabbar').style.setProperty('--i', Math.max(btns.findIndex((x) => x.dataset.tab === ui.tab), 0));
 }
 
 // ---------------- العمليات ----------------
@@ -220,8 +313,8 @@ function txRow(t) {
   const sign = t.type === 'income' ? '+' : '';
   const meta = [timeFmt.format(new Date(t.date)), cardName(t.bank, t.card), c.name].filter(Boolean).join(' · ');
   const bk = budget.counts(t) && store.getState().settings.budget.salary > 0 ? budget.bucketOf(t, store.getState()) : 'daily';
-  return `<li class="row ${t.excluded ? 'excluded' : ''}" data-id="${t.id}">
-    <div class="ic" style="background:${c.color}22">${c.icon}</div>
+  return `<li class="row ${t.excluded ? 'excluded' : ''} ${ui.flashId === t.id ? 'flash' : ''}" data-id="${t.id}">
+    <div class="ic" style="--tint:${c.color}">${c.icon}</div>
     <div class="main"><div class="title">${esc(t.merchant || typeLabel(t.type))}${t.confidence === 'low' ? '<span class="badge warn">راجعها</span>' : ''}${bk !== 'daily' ? `<span class="badge">${BUCKETS[bk].short}</span>` : ''}${t.excluded ? '<span class="badge">مستبعدة</span>' : ''}${t.investmentId ? '<span class="badge">📈 استثمار</span>' : ''}${t.debtId ? '<span class="badge">🤝 تسليف</span>' : ''}</div>
     <div class="meta">${esc(meta)}</div></div>
     <div class="amt ${t.type === 'income' ? 'income' : ''}">${sign}${money(t.amount)} <span class="small muted">${curLabel(t.currency)}</span></div></li>`;
@@ -246,7 +339,7 @@ function renderTxs() {
     groups.at(-1).items.push(t);
   }
   view.innerHTML = `
-    <div class="toolbar"><input type="search" id="q" placeholder="🔍 ابحث…" value="${esc(ui.q)}">
+    <div class="toolbar"><input type="search" id="q" placeholder="ابحث…" value="${esc(ui.q)}">
       <select id="cat-f"><option value="all">كل التصنيفات</option>${Object.entries(CATEGORIES).map(([k, c]) =>
         `<option value="${k}" ${ui.catFilter === k ? 'selected' : ''}>${c.icon} ${c.name}</option>`).join('')}</select></div>
     ${s.unparsed.length ? `<div class="card small" id="unparsed-note">⚠️ فيه <b>${s.unparsed.length}</b> رسالة ما قدرت أقراها — <a href="#" id="go-unparsed">راجعها</a></div>` : ''}
@@ -391,7 +484,7 @@ function todayCard() {
   if (r.pending) {
     const p = r.plan;
     return `<div class="card today"><div class="muted small">⏳ الحسبة الفعلية تبدأ مع راتب</div>
-      <div class="today-amt">${dateFmt.format(r.startDate)}</div>
+      <div class="today-amt" style="font-size:30px;margin:2px 0 4px">${dateFmt.format(r.startDate)}</div>
       <div class="small muted">بعد ${r.daysToStart} ${r.daysToStart === 1 ? 'يوم' : r.daysToStart === 2 ? 'يومين' : 'أيام'} — اللي قبله ما يدخل في الميزانية ولا التقارير</div>
       <div class="today-grid small">
         <div><b>${money(p.daily, 0)}</b><span>حدك اليومي المتوقع</span></div>
@@ -542,7 +635,7 @@ function reportPlaces(R) {
       const open = ui.openCat === c.key;
       const ms = R.merchants.filter((m) => m.category === c.key);
       return `<div class="card place ${open ? 'open' : ''}">
-        <div class="place-head" data-cat-toggle="${c.key}"><div class="ic" style="background:${cat(c.key).color}22">${cat(c.key).icon}</div>
+        <div class="place-head" data-cat-toggle="${c.key}"><div class="ic" style="--tint:${cat(c.key).color}">${cat(c.key).icon}</div>
           <div class="main"><div class="title">${cat(c.key).name}</div><div class="meta">${c.count} عملية · ${ms.length} مكان · <span class="num">${fmt(c.pct)}%</span></div></div>
           <div class="amt">${money(c.total, 0)} ر.س</div><span class="chev">${open ? '▴' : '▾'}</span></div>
         ${pctBar(c.pct, cat(c.key).color)}
@@ -634,7 +727,7 @@ function renderCommitments() {
         <button class="chip" data-link="${c.id}">📋 لصق الرسالة</button></div>`).join('')}</div>` : ''}
     ${list.length ? `<div class="card" style="padding:4px 14px"><ul class="list">${list.map(({ c, st }) => {
       const k = budget.COMMITMENT_KINDS[c.kind] || budget.COMMITMENT_KINDS.other;
-      return `<li class="row ${st.active ? '' : 'excluded'}" data-c="${c.id}"><div class="ic" style="background:var(--track)">${k.icon}</div>
+      return `<li class="row ${st.active ? '' : 'excluded'}" data-c="${c.id}"><div class="ic">${k.icon}</div>
         <div class="main"><div class="title">${esc(c.name)}${c.provider ? `<span class="badge">${esc(c.provider)}</span>` : ''}</div>
           <div class="meta wrap">${k.name}${st.next ? ` · الدفعة الجاية ${dateFmt.format(st.next)}` : ''}${st.remaining != null ? ` · ${st.active ? `باقي ${st.remaining} من ${c.total}` : 'خلص ✅'}` : ''}</div>
           ${st.paid != null ? pctBar((st.paid / c.total) * 100) : ''}
@@ -697,7 +790,7 @@ function investmentsSection(cyc) {
         const amt = budget.investAmount(i, key);
         const temp = !i.variable && i.overrides?.[key] != null && +i.overrides[key] !== +i.amount;
         const got = done[i.id] || 0;
-        return `<li class="row" data-inv="${i.id}"><div class="ic" style="background:var(--track)">${i.variable ? '🎲' : '📈'}</div>
+        return `<li class="row" data-inv="${i.id}"><div class="ic">${i.variable ? '🎲' : '📈'}</div>
           <div class="main"><div class="title wrap">${esc(i.name)}${temp ? `<span class="badge warn">مؤقت بدل ${fmt(i.amount)}</span>` : ''}</div>
           <div class="meta wrap">${i.variable ? (i.cap > 0 ? capLine(got, i.cap) : `متغيّر — تحويلاته تنقص حدك اليومي${got ? ` · حوّلت هالدورة ${money(got, 0)} ر.س` : ''}`)
             : got >= amt && amt ? `✅ تحوّل هالدورة (${money(got, 0)})` : got ? `حوّلت ${money(got, 0)} من ${money(amt, 0)}` : i.signature ? '⏳ ما وصلت رسالة التحويل هالدورة' : ''}</div>
@@ -780,7 +873,7 @@ function debtRow(d, now = new Date()) {
   const rem = budget.debtRemaining(d), paid = budget.debtPaid(d);
   const late = rem > 0 && d.dueDate && new Date(`${d.dueDate}T23:59:59`) < now;
   const lent = d.direction === 'lent';
-  return `<li class="row" data-debt="${d.id}"><div class="ic" style="background:${lent ? '#2b8a3e22' : '#c92a2a22'}">${lent ? '📤' : '📥'}</div>
+  return `<li class="row" data-debt="${d.id}"><div class="ic" style="--tint:${lent ? 'var(--green)' : 'var(--red)'}">${lent ? '📤' : '📥'}</div>
     <div class="main"><div class="title wrap">${esc(d.person)}${late ? '<span class="badge warn">متأخر</span>' : ''}</div>
       <div class="meta wrap">${esc(dayFmt.format(new Date(d.date)))}${d.note ? ` · ${esc(d.note)}` : ''}${d.dueDate && rem > 0 && !late ? ` · موعد السداد ${esc(dayFmt.format(new Date(`${d.dueDate}T12:00:00`)))}` : ''}${paid > 0 && rem > 0 ? ` · انسدد ${money(paid, 0)} من ${money(d.amount, 0)}` : ''}</div>
       ${paid > 0 && rem > 0 ? pctBar((paid / d.amount) * 100, lent ? 'var(--good)' : 'var(--danger)') : ''}</div>
@@ -894,7 +987,8 @@ function openPaymentSheet(id) {
       if (!(amount > 0)) return toast('اكتب المبلغ');
       if (amount > rem + 0.004) return toast(`المبلغ أكبر من المتبقي (${fmt(rem, 2)})`);
       store.addDebtPayment(id, { amount, date: fromInput($('#p-date', p).value) });
-      closeSheet(); toast(budget.debtRemaining(store.getState().debts.find((x) => x.id === id)) <= 0.004 ? '✅ انسدد الدين بالكامل 🎉' : '✅ انحفظ السداد');
+      closeSheet();
+      if (budget.debtRemaining(store.getState().debts.find((x) => x.id === id)) <= 0.004) { toast('🎉 انسدد الدين بالكامل'); confetti(); } else toast('✅ انحفظ السداد');
     };
   });
 }
@@ -1121,6 +1215,13 @@ function download(name, content, type) {
 }
 
 // ---------------- تشغيل ----------------
+// أيقونات شريط التبويبات (عادي + ممتلئ) وتحويل الإيموجي لأيقونات
+document.querySelectorAll('.tabbar button').forEach((b) => {
+  b.querySelector('.ti').innerHTML = `<span class="off">${svg(b.dataset.ic, 'r')}</span><span class="on">${svg(b.dataset.ic, 'f')}</span>`;
+});
+autoIconify(document.body);
+window.addEventListener('scroll', () => $('#topbar').classList.toggle('scrolled', scrollY > 6), { passive: true });
+syncTabs();
 ingestFromURL();
 maybeArchive();
 render();

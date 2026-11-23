@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>حِسبَة</title>
   <meta name="description" content="تتبّع صرفياتك تلقائياً من رسائل البنك">
-  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="حِسبَة">
@@ -13,23 +14,25 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg?v=2" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=2">
+  <link rel="preload" href="fonts/noto-arabic.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1>حِسبَة</h1>
+  <header class="topbar" id="topbar">
+    <h1><img class="logo" src="icons/icon.svg?v=2" alt="" width="36" height="36">حِسبَة</h1>
     <div class="top-actions"><button class="paste-btn" id="paste-btn">📋 لصق رسالة</button>
       <button class="icon-btn" id="add-btn" aria-label="إضافة عملية">＋</button></div>
   </header>
 
   <main id="view" aria-live="polite"></main>
 
-  <nav class="tabbar" role="tablist">
-    <button data-tab="home" class="active"><span>📊</span>الملخص</button>
-    <button data-tab="txs"><span>🧾</span>العمليات</button>
-    <button data-tab="reports"><span>📈</span>التقارير</button>
-    <button data-tab="commits"><span>📌</span>الالتزامات</button>
-    <button data-tab="settings"><span>⚙️</span>الإعدادات</button>
+  <nav class="tabbar" id="tabbar" role="tablist">
+    <span class="tab-ind" aria-hidden="true"></span>
+    <button data-tab="home" data-ic="chart-bar" class="active"><span class="ti"></span>الملخص</button>
+    <button data-tab="txs" data-ic="receipt"><span class="ti"></span>العمليات</button>
+    <button data-tab="reports" data-ic="chart-line-up"><span class="ti"></span>التقارير</button>
+    <button data-tab="commits" data-ic="push-pin"><span class="ti"></span>الالتزامات</button>
+    <button data-tab="settings" data-ic="gear-six"><span class="ti"></span>الإعدادات</button>
   </nav>
 
   <div id="sheet" class="sheet" hidden>
