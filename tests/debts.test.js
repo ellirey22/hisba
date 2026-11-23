@@ -16,9 +16,9 @@ const back = 'حوالة واردة\nمن: أبو خالد\nمبلغ: SAR 200\n�
 t('تسليف: العملية تنستبعد من الصرف', () => {
   const d = store.saveDebt({ direction: 'lent', person: 'أبو خالد', amount: 500, date: new Date().toISOString() });
   const r = store.debtMessageTx(out); assert.ok(r.ok);
-  assert.equal(isExpense(r.tx), true); // قبل الربط تنحسب
-  store.attachDebtTx(d.id, r.tx.id, 'principal');
+  // التحويل المطابق للدين ينربط ويستبعد تلقائياً بدون ما تلصق شي
   const tx = S().txs.find((x) => x.id === r.tx.id);
+  assert.equal(S().debts[0].principalTxId, tx.id);
   assert.equal(isExpense(tx), false); assert.equal(counts(tx), false);
   assert.equal(tx.debtId, d.id);
 });
@@ -62,6 +62,43 @@ t('فك ربط عملية سداد يرجّع المتبقي', () => {
   store.deleteDebtPayment(fahd.id, p.id);
   assert.equal(debtRemaining(S().debts.find((d) => d.person === 'فهد')), 400);
   assert.equal(S().txs.find((x) => x.id === p.txId).bucket, undefined);
+});
+t('دين جديد يلقى تحويل سابق مطابق ويستبعده', () => {
+  const r = store.debtMessageTx('حوالة محلية صادرة\nمن: **2000\nإلى: **9090\nمبلغ: SAR 750\nفي: 22-11-2026 09:00');
+  assert.equal(isExpense(S().txs.find((x) => x.id === r.tx.id)), true);
+  const d = store.saveDebt({ direction: 'lent', person: 'خالد', amount: 750, date: new Date('2026-11-23').toISOString() });
+  assert.equal(isExpense(S().txs.find((x) => x.id === r.tx.id)), false);
+  assert.ok(S().debts.find((x) => x.id === d.id).principalTxId);
+});
+t('زر «تم السداد» يسوّي الدين ويرجّعه', () => {
+  const d = S().debts.find((x) => x.person === 'خالد');
+  assert.equal(store.toggleDebtSettled(d.id), true);
+  assert.equal(debtRemaining(S().debts.find((x) => x.id === d.id)), 0);
+  assert.equal(store.toggleDebtSettled(d.id), false);
+  assert.equal(debtRemaining(S().debts.find((x) => x.id === d.id)), 750);
+});
+t('علامة تم السداد للالتزام والمحفظة بالدورة وترجع', () => {
+  const c = store.saveCommitment({ kind: 'family', name: 'ماما', amount: 2000, day: 1 });
+  store.toggleCommitmentPaid(c.id, '2026-11'); assert.equal(S().commitments.find((x) => x.id === c.id).paid['2026-11'], true);
+  assert.equal(S().commitments.find((x) => x.id === c.id).paid['2026-12'], undefined); // الدورة الجاية تبدأ بدون علامة
+  store.toggleCommitmentPaid(c.id, '2026-11'); assert.equal(S().commitments.find((x) => x.id === c.id).paid['2026-11'], undefined);
+  const i = store.saveInvestment({ name: 'محفظة', amount: 1000, overrides: {} });
+  store.toggleInvestmentDone(i.id, '2026-11'); assert.equal(S().investments.find((x) => x.id === i.id).done['2026-11'], true);
+});
+t('مسح الرسالة المتعلّمة يحذف العملية اللي انضافت بالغلط', () => {
+  const i = store.saveInvestment({ name: 'تقنية', amount: 1200, overrides: {} });
+  const before = S().txs.length;
+  const r = store.linkInvestmentMessage(i.id, 'شراء إنترنت بـSR 18.5 \nعبر6196;فيزا\nلـKUDU\nرصيد:100 SR\n23/11/26 8:38');
+  assert.ok(r.ok); assert.equal(S().txs.length, before + 1);
+  store.clearLink('inv', i.id);
+  assert.equal(S().txs.length, before); assert.equal(S().investments.find((x) => x.id === i.id).signature, undefined);
+});
+t('فك ربط عملية بمحفظة يرجّعها صرف عادي', () => {
+  const i = S().investments.find((x) => x.name === 'تقنية');
+  const r = store.linkInvestmentMessage(i.id, 'شراء إنترنت بـSR 33 \nعبر6196;فيزا\nلـNOON\nرصيد:100 SR\n23/11/26 9:38');
+  assert.equal(isExpense(S().txs.find((x) => x.id === r.tx.id)), false);
+  store.unlinkTx(r.tx.id);
+  assert.equal(isExpense(S().txs.find((x) => x.id === r.tx.id)), true);
 });
 console.log(`\n${pass}/${pass + fail} نجحت`);
 if (fail) process.exit(1);

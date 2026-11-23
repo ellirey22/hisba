@@ -380,7 +380,7 @@ html.privacy .wk, html.privacy .stack-amt { filter: blur(0); }
 .add-row { display: flex; gap: 8px; } .add-row .add-link { flex: 1; }
 .teach { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 3px 10px; border: 0; border-radius: 99px; font-size: 12px; font-weight: 600; background: color-mix(in srgb, var(--brand) 11%, transparent); color: var(--brand); }
 .row .amt .pill { margin-top: 3px; }
-.row .amt:has(.pill) { display: flex; flex-direction: column; align-items: flex-end; }
+.row .amt:has(.pill), .row .amt:has(.chk) { display: flex; flex-direction: column; align-items: flex-end; }
 .sub-seg { margin: 12px 0 4px; }
 .empty-mini { text-align: center; color: var(--text-2); font-size: 13.5px; padding: 18px 8px 8px; }
 
@@ -411,3 +411,13 @@ html.privacy .wk, html.privacy .stack-amt { filter: blur(0); }
 .card-link { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; margin-top: 4px; padding: 9px; border: 0; background: none; color: var(--brand); font-weight: 600; font-size: 14px; }
 .h2row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; } .h2row h2 { margin: 0; }
 .h2row .small { color: var(--text-2); }
+
+/* علامة تفعيل «تم» تحت المبلغ */
+.chk { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; padding: 3px 11px 3px 4px; border: 0; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap;
+  background: var(--fill); color: var(--text-2); transition: background .25s, color .25s, transform .2s var(--spring); }
+.chk:active { transform: scale(.93); }
+.chk-c { width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; flex: none; border: 1.7px solid var(--text-3); color: transparent; transition: background .25s, border-color .25s, color .25s; }
+.chk-c svg { width: 11px; height: 11px; }
+.chk.on { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--good); }
+.chk.on .chk-c { background: var(--green); border-color: var(--green); color: #fff; animation: pop .45s var(--spring); }
+.row.noic::before { inset-inline: 6px !important; }

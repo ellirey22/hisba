@@ -240,7 +240,6 @@ $('#add-btn').addEventListener('click', openAddSheet);
 $('#eye-btn').addEventListener('click', () => {
   const on = !store.getState().settings.privacy;
   ui.skipRender = true; store.updateSettings({ privacy: on }); applyAppearance();
-  toast(on ? '🙈 أخفيت الأرقام' : '👁 الأرقام ظاهرة', 1400);
 });
 // ضغطة وحدة: يقرأ رسالة البنك المنسوخة ويضيفها على طول
 $('#paste-btn').addEventListener('click', async () => {
@@ -382,14 +381,14 @@ function upcomingCard() {
   for (const c of s.commitments) {
     const st = budget.commitmentStatus(c);
     if (!st.active || !st.next) continue;
-    if (budget.paidInRange(c, s.txs, s.commitments, cyc).length) continue;
+    if (budget.commitmentDone(c, budget.cycleKey(cyc), s.txs, s.commitments, cyc)) continue;
     if ((st.next - new Date()) / 864e5 > 20) continue;
-    items.push({ ico: (budget.COMMITMENT_KINDS[c.kind] || budget.COMMITMENT_KINDS.other).icon, tint: 'var(--orange)', title: c.name, date: st.next, amount: c.amount });
+    items.push({ ico: budget.commitIcon(c), tint: budget.commitTint(c), title: c.name, date: st.next, amount: c.amount });
   }
   const invs = s.investments || [];
   const done = budget.investedInRange(invs, s.txs, cyc, s.settings.rates);
   const key = budget.cycleKey(cyc);
-  for (const i of invs) { const amt = budget.investAmount(i, key); if (!i.variable && amt && (done[i.id] || 0) < amt) items.push({ ico: '📈', tint: 'var(--blue)', title: i.name, date: null, amount: amt - (done[i.id] || 0) }); }
+  for (const i of invs) { const amt = budget.investAmount(i, key); if (!i.variable && amt && !budget.investmentDone(i, key, done[i.id] || 0)) items.push({ ico: '📈', tint: 'var(--blue)', title: i.name, date: null, amount: amt - (done[i.id] || 0) }); }
   if (!items.length) return '';
   items.sort((a, b) => (a.date || Infinity) - (b.date || Infinity));
   return `<div class="card"><div class="h2row"><h2>الجاي</h2></div><ul class="list">${items.slice(0, 5).map((x) => `<li class="row" data-go="${x.income ? 'settings' : 'commits'}">
@@ -481,6 +480,7 @@ function openTxSheet(id) {
         ${t.debtId ? '<option value="unlink">فك الربط بالدين</option>' : ''}
         ${st.debts.filter((x) => budget.debtRemaining(x) > 0.004 && x.id !== t.debtId).map((x) => `<option value="d:${x.id}">${x.direction === 'lent' ? 'سداد من' : 'سداد لـ'} ${esc(x.person)} (متبقي ${fmt(budget.debtRemaining(x), 0)})</option>`).join('')}
         ${!t.debtId ? '<option value="new:lent">📤 هذي تسليف جديد</option><option value="new:borrowed">📥 هذي استلاف جديد</option>' : ''}</select></label>` : ''}
+    ${t.commitmentId || t.investmentId ? `<button class="btn block" id="e-unlink" style="margin-top:0">فك ربطها بـ«${esc((t.investmentId ? st.investments.find((x) => x.id === t.investmentId) : st.commitments.find((x) => x.id === t.commitmentId))?.name || '—')}»</button>` : ''}
     ${t.raw ? `<details><summary class="small">نص الرسالة الأصلي</summary><div class="raw" dir="auto">${esc(t.raw)}</div></details>` : ''}
     <button class="btn primary block" id="save">حفظ</button>
     <button class="btn danger block" id="del">حذف العملية</button>`, (p) => {
@@ -518,6 +518,7 @@ function openTxSheet(id) {
       }
       closeSheet();
     };
+    $('#e-unlink', p)?.addEventListener('click', () => { store.unlinkTx(id); closeSheet(); toast('✅ انفكّ الربط، والعملية رجعت تنحسب كصرف عادي'); });
     $('#del', p).onclick = () => { if (confirm('تحذف العملية؟')) { store.deleteTx(id); closeSheet(); } };
   });
 }
@@ -807,19 +808,17 @@ function renderCommitments() {
   const paidOf = (c) => budget.paidInRange(c, s.txs, s.commitments, cyc);
   const needSample = list.filter(({ c, st }) => st.active && !c.signature && !c.keyword);
   const activeN = list.filter(({ st }) => st.active).length;
+  const ckey = budget.cycleKey(cyc);
   const body = `<div class="kpis"><div class="kpi" style="--tint:var(--orange)"><span>شهرياً</span><b>${money(total, 0)} <small>ر.س</small></b></div>
       ${salary > 0 ? `<div class="kpi neutral"><span>من الراتب</span><b>${fmt((total / salary) * 100)}%</b></div>` : ''}
       ${remainingDebt ? `<div class="kpi neutral"><span>باقي أقساط</span><b>${money(remainingDebt, 0)}</b></div>` : ''}</div>
     ${list.length ? `<ul class="list">${list.map(({ c, st }) => {
-      const k = budget.COMMITMENT_KINDS[c.kind] || budget.COMMITMENT_KINDS.other;
-      const paid = st.active && paidOf(c).length;
-      const pill = !st.active ? '<span class="pill">خلص</span>' : paid ? '<span class="pill ok">انسدد ✓</span>' : '<span class="pill">بانتظار</span>';
+      const on = st.active && budget.commitmentDone(c, ckey, s.txs, s.commitments, cyc);
       const meta = [st.next ? `الجاي ${dayFmt.format(st.next)}` : '', st.remaining != null && st.active ? `باقي ${st.remaining} من ${c.total}` : ''].filter(Boolean).join(' · ');
-      return `<li class="row ${st.active ? '' : 'excluded'}" data-c="${c.id}"><div class="ic" style="--tint:var(--orange)">${k.icon}</div>
-        <div class="main"><div class="title">${esc(c.name)}</div><div class="meta wrap">${meta || k.name}</div>
-          ${st.paid != null && st.active ? pctBar((st.paid / c.total) * 100, 'var(--orange)') : ''}
-          ${st.active && !c.signature && !c.keyword ? `<button class="teach" data-link="${c.id}">📩 علّمني رسالة السداد</button>` : ''}</div>
-        <div class="amt"><span>${money(c.amount, 0)}</span>${pill}</div></li>`;
+      return `<li class="row ${st.active ? '' : 'excluded'}" data-c="${c.id}"><div class="ic" style="--tint:${budget.commitTint(c)}">${budget.commitIcon(c)}</div>
+        <div class="main"><div class="title">${esc(c.name)}</div><div class="meta wrap">${meta || (budget.COMMITMENT_KINDS[c.kind] || budget.COMMITMENT_KINDS.other).name}</div>
+          ${st.paid != null && st.active ? pctBar((st.paid / c.total) * 100, 'var(--orange)') : ''}</div>
+        <div class="amt"><span>${c.approx ? '≈ ' : ''}${money(c.amount, 0)}</span>${st.active ? chk('data-c-paid', c.id, on, 'تم السداد', 'بانتظار') : '<span class="pill">خلص</span>'}</div></li>`;
     }).join('')}</ul>` : '<div class="empty-mini">أضف إيجارك وفواتيرك وأقساطك عشان تنخصم من راتبك قبل ما أحسب حدك اليومي.</div>'}
     ${inst.length || subs.length ? `<div class="sec-title">مقترحات من عملياتك</div>
       ${inst.map((x, i) => `<div class="kv"><span>🧩 ${esc(x.name)} <span class="pill">${x.provider}</span></span><button class="chip small" data-inst="${i}">إضافة</button></div>`).join('')}
@@ -827,9 +826,13 @@ function renderCommitments() {
         <span><button class="chip small" data-sub="${i}">إضافة</button> <button class="chip small" data-dismiss="${esc(x.key)}">✕</button></span></div>`).join('')}` : ''}
     <button class="add-link" id="add-c">＋ إضافة التزام</button>`;
   view.innerHTML = `
-    ${debtsSection()}
+    ${acc('commits', { ico: 'calendar-check', tint: '#ff8a00', title: 'الالتزامات الشهرية', body })}
     ${investmentsSection(cyc)}
-    ${acc('commits', { ico: 'calendar-check', tint: '#ff8a00', title: 'الالتزامات الشهرية', body })}`;
+    ${debtsSection()}`;
+  // علامات «تم»: ما تفتح النافذة، وتتجدد كل دورة لحالها
+  view.querySelectorAll('[data-c-paid]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); store.toggleCommitmentPaid(b.dataset.cPaid, ckey); });
+  view.querySelectorAll('[data-inv-done]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); store.toggleInvestmentDone(b.dataset.invDone, ckey); });
+  view.querySelectorAll('[data-settle]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); if (store.toggleDebtSettled(b.dataset.settle)) confetti(); });
   view.querySelectorAll('[data-debtf]').forEach((b) => b.onclick = () => { ui.debtF = b.dataset.debtf; render(); });
   $('#add-c').onclick = () => openCommitmentSheet();
   $('#add-inv').onclick = () => openInvestmentSheet();
@@ -837,13 +840,9 @@ function renderCommitments() {
   $('#add-borrowed').onclick = () => openDebtSheet({ direction: 'borrowed' });
   view.querySelectorAll('[data-debt]').forEach((x) => x.onclick = () => openDebtDetail(x.dataset.debt));
   view.querySelectorAll('[data-inv]').forEach((x) => x.onclick = () => openInvestmentSheet(s.investments.find((i) => i.id === x.dataset.inv)));
-  view.querySelectorAll('[data-inv-link]').forEach((x) => x.onclick = async (e) => {
+  view.querySelectorAll('[data-inv-link]').forEach((x) => x.onclick = (e) => {
     e.stopPropagation();
-    let text = '';
-    try { text = await navigator.clipboard.readText(); } catch { /* */ }
-    const inv = s.investments.find((i) => i.id === x.dataset.invLink);
-    if (!text.trim()) return openInvestmentSheet(inv);
-    linkResult(store.linkInvestmentMessage(inv.id, text), inv);
+    openInvestmentSheet(s.investments.find((i) => i.id === x.dataset.invLink), true);
   });
   view.querySelectorAll('[data-link]').forEach((x) => x.onclick = async (e) => {
     e.stopPropagation();
@@ -872,20 +871,21 @@ function investmentsSection(cyc) {
   const key = budget.cycleKey(cyc);
   const done = budget.investedInRange(invs, s.txs, cyc, s.settings.rates);
   const planned = budget.investmentsPlanned(invs, key);
-  const sent = invs.filter((i) => !i.variable).reduce((a, i) => a + (done[i.id] || 0), 0);
-  const body = `${invs.length ? `<div class="kpis"><div class="kpi" style="--tint:var(--blue)"><span>المخطط · ${monthName(key)}</span><b>${money(planned, 0)} <small>ر.س</small></b></div>
-      <div class="kpi" style="--tint:${sent >= planned && planned ? 'var(--good)' : 'var(--text)'}"><span>تحوّل فعلياً</span><b>${money(sent, 0)} <small>ر.س</small></b></div></div>
+  const salary = s.settings.budget.salary;
+  const sent = invs.filter((i) => !i.variable).reduce((a, i) => { const amt = budget.investAmount(i, key); const g = done[i.id] || 0; return a + (budget.investmentDone(i, key, g) ? Math.max(amt, g) : g); }, 0);
+  const body = `${invs.length ? `<div class="kpis"><div class="kpi" style="--tint:var(--blue)"><span>المخطط</span><b>${money(planned, 0)} <small>ر.س</small></b></div>
+      <div class="kpi" style="--tint:${sent >= planned && planned ? 'var(--good)' : 'var(--text)'}"><span>تحوّل</span><b>${money(sent, 0)} <small>ر.س</small></b></div>
+      ${salary > 0 && planned ? `<div class="kpi neutral"><span>من الراتب</span><b>${fmt((planned / salary) * 100)}%</b></div>` : ''}</div>
       ${planned ? pctBar(Math.min((sent / planned) * 100, 100), 'var(--blue)') : ''}
       <ul class="list">${invs.map((i) => {
         const amt = budget.investAmount(i, key);
-        const temp = !i.variable && i.overrides?.[key] != null && +i.overrides[key] !== +i.amount;
         const got = done[i.id] || 0;
-        const status = i.variable ? '' : got >= amt && amt ? '<span class="pill ok">تحوّل ✓</span>' : got ? `<span class="pill warn">${money(got, 0)} من ${money(amt, 0)}</span>` : '<span class="pill">بانتظار</span>';
+        const on = !i.variable && budget.investmentDone(i, key, got);
         return `<li class="row" data-inv="${i.id}"><div class="ic" style="--tint:${i.variable ? 'var(--orange)' : 'var(--blue)'}">${i.variable ? '🎲' : '📈'}</div>
           <div class="main"><div class="title">${esc(i.name)}</div>
-          <div class="meta wrap">${i.variable ? (i.cap > 0 ? capLine(got, i.cap) : `متغيّر${got ? ` · حوّلت ${money(got, 0)}` : ''}`) : temp ? `مؤقت بدل ${money(i.amount, 0)}` : 'شهرياً'}</div>
-          ${!i.signature ? `<button class="teach" data-inv-link="${i.id}">📩 علّمني رسالة التحويل</button>` : ''}</div>
-          <div class="amt">${i.variable ? (i.cap > 0 ? `<span>${money(i.cap, 0)}</span><span class="pill">سقف</span>` : '—') : `<span>${money(amt, 0)}</span>${status}`}</div></li>`;
+          <div class="meta wrap">${i.variable ? (i.cap > 0 ? capLine(got, i.cap) : `متغيّر${got ? ` · حوّلت ${money(got, 0)}` : ''}`) : got && !on ? `حوّلت ${money(got, 0)} من ${money(amt, 0)}` : 'شهرياً'}</div>
+          ${i.variable && !i.signature ? `<button class="teach" data-inv-link="${i.id}">📩 علّمني رسالة التحويل</button>` : ''}</div>
+          <div class="amt">${i.variable ? (i.cap > 0 ? `<span>${money(i.cap, 0)}</span><span class="pill">سقف</span>` : '—') : `<span>${money(amt, 0)}</span>${chk('data-inv-done', i.id, on, 'تم التحويل', 'بانتظار')}`}</div></li>`;
       }).join('')}</ul>` : '<div class="empty-mini">مبلغ المحفظة ينخصم من الراتب قبل الحد اليومي، وتحويلاتها ما تنحسب صرف.</div>'}
     <button class="add-link" id="add-inv">＋ إضافة محفظة</button>`;
   return acc('inv', { ico: 'trend-up', tint: '#0a7cff', title: 'الاستثمار', body });
@@ -906,7 +906,7 @@ function capStatus(inv) {
   return { got, cap: inv.cap, left: inv.cap - got, pct: (got / inv.cap) * 100 };
 }
 
-function openInvestmentSheet(inv = {}) {
+function openInvestmentSheet(inv = {}, focusSample = false) {
   const ov = Object.entries(inv.overrides || {}).sort();
   const thisKey = budget.cycleKey(budget.cycleFor(new Date(), store.getState().settings.budget.payday || 27));
   openSheet(`<h3>${inv.id ? 'تعديل محفظة' : 'محفظة جديدة'}</h3>
@@ -920,13 +920,16 @@ function openInvestmentSheet(inv = {}) {
       <div id="i-ov">${ov.map(([k, v]) => ovRow(k, v)).join('')}</div>
       <button class="btn block" id="i-add-ov" style="margin-top:0">＋ مبلغ مؤقت لدورة</button>
     </div>
-    <label class="field">رسالة البنك للتحويل لهذي المحفظة <span class="small">(مرة وحدة، وبعدها أتعرّف على التحويلات لحالي)</span>
-      <textarea id="i-sample" dir="auto" style="min-height:80px">${esc(inv.sample || '')}</textarea></label>
-    ${inv.signature ? `<p class="small good" style="margin-top:-4px">✅ متعلّمها${inv.signature.target ? ` — المستفيد •${esc(inv.signature.target)}` : inv.signature.merchant ? ` — ${esc(inv.signature.merchant)}` : ''}</p>` : ''}
-    <button class="btn block" id="i-paste" style="margin-top:0">📋 لصق من الحافظة</button>
+    <div id="i-msg">
+      <label class="field">رسالة البنك للتحويل لهذي المحفظة <span class="small">(مرة وحدة، وبعدها أتعرّف على التحويلات لحالي)</span>
+        <textarea id="i-sample" dir="auto" style="min-height:80px">${esc(inv.sample || '')}</textarea></label>
+      ${inv.signature ? `<p class="small good" style="margin-top:-4px">✅ متعلّمها${inv.signature.target ? ` — المستفيد •${esc(inv.signature.target)}` : inv.signature.merchant ? ` — ${esc(inv.signature.merchant)}` : ''}</p>` : ''}
+      <button class="btn block" id="i-paste" style="margin-top:0">📋 لصق من الحافظة</button>
+    </div>
     <button class="btn primary block" id="i-save">حفظ</button>
     ${inv.id ? '<button class="btn danger block" id="i-del">حذف المحفظة</button>' : ''}`, (p) => {
-    const sync = () => { $('#i-fixed', p).hidden = $('#i-var', p).checked; $('#i-cap-wrap', p).hidden = !$('#i-var', p).checked; };
+    const sync = () => { const v = $('#i-var', p).checked; $('#i-fixed', p).hidden = v; $('#i-cap-wrap', p).hidden = !v; $('#i-msg', p).hidden = !v; };
+    if (focusSample) setTimeout(() => $('#i-sample', p)?.scrollIntoView({ block: 'center' }), 60);
     $('#i-var', p).onchange = sync; sync();
     const bindRows = () => p.querySelectorAll('[data-ov-del]').forEach((b) => b.onclick = () => b.closest('.ov-row').remove());
     bindRows();
@@ -944,10 +947,14 @@ function openInvestmentSheet(inv = {}) {
       });
       const saved = store.saveInvestment({ id: inv.id, name, variable, amount: variable ? 0 : amount, overrides: variable ? {} : overrides,
         cap: variable ? parseFloat($('#i-cap', p).value) || 0 : 0 });
-      const sample = $('#i-sample', p).value.trim();
+      const sample = variable ? $('#i-sample', p).value.trim() : '';
       closeSheet();
       if (sample && sample !== (inv.sample || '')) linkResult(store.linkInvestmentMessage(saved.id, sample), saved);
-      else toast('✅ انحفظت المحفظة');
+      else {
+        // مسحت الرسالة (أو المحفظة ثابتة وما تحتاج رسالة): نمسح اللي اتعلّمته، وأي عملية انضافت بسببها
+        if (inv.id && (inv.sample || inv.signature) && !sample) store.clearLink('inv', saved.id);
+        toast('✅ انحفظت المحفظة');
+      }
     };
     $('#i-del', p)?.addEventListener('click', () => { if (confirm('تحذف المحفظة؟ تحويلاتها السابقة بترجع تنحسب كعمليات عادية.')) { store.deleteInvestment(inv.id); closeSheet(); } });
   });
@@ -961,15 +968,18 @@ const todayInput = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d
 const fromInput = (v) => new Date(`${v || todayInput()}T12:00:00`).toISOString();
 
 const hueOf = (str) => { let h = 0; for (const ch of String(str)) h = (h * 31 + ch.codePointAt(0)) % 360; return h; };
+/** علامة تفعيل: تضغطها تصير «تم»، وتضغطها مرة ثانية ترجع «بانتظار» */
+const chk = (attr, id, on, onLabel, offLabel) => `<button class="chk ${on ? 'on' : ''}" ${attr}="${id}" aria-pressed="${on}"><span class="chk-c">${svg('check', 'f')}</span>${on ? onLabel : offLabel}</button>`;
+
 function debtRow(d, now = new Date()) {
   const rem = budget.debtRemaining(d), paid = budget.debtPaid(d);
   const late = rem > 0 && d.dueDate && new Date(`${d.dueDate}T23:59:59`) < now;
   const lent = d.direction === 'lent';
   const meta = [dayFmt.format(new Date(d.date)), d.note && esc(d.note), paid > 0 && rem > 0 ? `انسدد ${money(paid, 0)} من ${money(d.amount, 0)}` : ''].filter(Boolean).join(' · ');
-  return `<li class="row" data-debt="${d.id}"><div class="av" style="--h:${hueOf(d.person)}">${esc(String(d.person).trim().charAt(0))}</div>
-    <div class="main"><div class="title">${esc(d.person)}</div><div class="meta wrap">${meta}</div>
+  return `<li class="row noic" data-debt="${d.id}">
+    <div class="main"><div class="title">${esc(d.person)}${late ? '<span class="pill late" style="margin-inline-start:6px">متأخر</span>' : ''}</div><div class="meta wrap">${meta}</div>
       ${paid > 0 && rem > 0 ? pctBar((paid / d.amount) * 100, lent ? 'var(--green)' : 'var(--red)') : ''}</div>
-    <div class="amt"><span class="${rem > 0 ? (lent ? 'good' : 'bad') : 'muted'}">${money(rem > 0 ? rem : d.amount, 0)}</span>${late ? '<span class="pill late">متأخر</span>' : rem <= 0 ? '<span class="pill ok">مسدّد</span>' : ''}</div></li>`;
+    <div class="amt"><span class="${rem > 0 ? (lent ? 'good' : 'bad') : 'muted'}">${money(rem > 0 ? rem : d.amount, 0)}</span>${chk('data-settle', d.id, rem <= 0, 'تم السداد', 'بانتظار')}</div></li>`;
 }
 
 function debtsSection() {
@@ -977,9 +987,9 @@ function debtsSection() {
   const sm = budget.debtSummary(s.debts);
   const f = ui.debtF || (sm.lent.length || !sm.borrowed.length ? 'lent' : 'borrowed');
   const lists = { lent: sm.lent, borrowed: sm.borrowed, settled: sm.settled };
-  const empty = { lent: 'ما سلّفت أحد للحين', borrowed: 'ما عليك ديون 👌', settled: 'ما فيه ديون مسدّدة' };
-  const body = `<div class="kpis"><div class="kpi" style="--tint:var(--good)"><span>لي عند الناس</span><b>${money(sm.toMe, 0)} <small>ر.س</small></b></div>
-      <div class="kpi" style="--tint:var(--bad)"><span>عليّ للناس</span><b>${money(sm.iOwe, 0)} <small>ر.س</small></b></div></div>
+  const empty = { lent: 'ما سلّفت أحد للحين', borrowed: 'ما عليك ديون', settled: 'ما فيه ديون مسدّدة' };
+  const body = `<div class="kpis"><div class="kpi" style="--tint:var(--good)"><span>لي</span><b>${money(sm.toMe, 0)} <small>ر.س</small></b></div>
+      <div class="kpi" style="--tint:var(--bad)"><span>عليّ</span><b>${money(sm.iOwe, 0)} <small>ر.س</small></b></div></div>
     ${s.debts.length ? `<div class="seg sub-seg">${[['lent', 'لي', sm.lent.length], ['borrowed', 'عليّ', sm.borrowed.length], ['settled', 'المسدّدة', sm.settled.length]].map(([k, n, c]) =>
       `<button data-debtf="${k}" class="${k === f ? 'active' : ''}">${n}${c ? ` (${c})` : ''}</button>`).join('')}</div>
     ${lists[f].length ? `<ul class="list">${lists[f].map((d) => debtRow(d)).join('')}</ul>` : `<div class="empty-mini">${empty[f]}</div>`}` : ''}
@@ -997,30 +1007,19 @@ function openDebtSheet(d = {}) {
     <label class="field">التاريخ<input type="date" id="d-date" value="${d.date ? new Date(d.date).toISOString().slice(0, 10) : todayInput()}"></label>
     <label class="field">موعد السداد المتوقع <span class="small">(اختياري، أنبّهك لو تأخر)</span><input type="date" id="d-due" value="${esc(d.dueDate || '')}"></label>
     <label class="field">ملاحظة <span class="small">(اختياري)</span><input type="text" id="d-note" value="${esc(d.note || '')}" placeholder="مثلاً: سلفة للسيارة"></label>
-    ${editing ? '' : `<label class="field">رسالة البنك للتحويل <span class="small">(اختياري: عشان ما ينحسب صرف من ميزانيتك)</span>
-      <textarea id="d-sample" dir="auto" style="min-height:80px"></textarea></label>
-      <button class="btn block" id="d-paste" style="margin-top:0">📋 لصق من الحافظة</button>`}
     <button class="btn primary block" id="d-save">حفظ</button>`, (p) => {
     p.querySelectorAll('#d-dir [data-d]').forEach((b) => b.onclick = () => {
       dir = b.dataset.d; p.querySelectorAll('#d-dir [data-d]').forEach((x) => x.classList.toggle('active', x === b));
       $('#d-who', p).textContent = dir === 'lent' ? 'سلّفت مين؟' : 'استلفت من مين؟';
     });
-    $('#d-paste', p)?.addEventListener('click', async () => { try { $('#d-sample', p).value = await navigator.clipboard.readText(); } catch { toast('الصقها يدوياً'); } });
     $('#d-save', p).onclick = () => {
       const person = $('#d-person', p).value.trim();
       const amount = parseFloat($('#d-amount', p).value);
       if (!person || !(amount > 0)) return toast('اكتب الاسم والمبلغ');
       const saved = store.saveDebt({ id: d.id, direction: dir, person, amount, date: fromInput($('#d-date', p).value), dueDate: $('#d-due', p).value || '', note: $('#d-note', p).value.trim() });
-      const sample = $('#d-sample', p)?.value.trim();
-      const fromTx = d.txId;
-      let note = '';
-      if (sample) {
-        const r = store.debtMessageTx(sample);
-        if (r.ok) { store.attachDebtTx(saved.id, r.tx.id, dir === 'lent' ? 'principal' : 'principal'); note = dir === 'lent' ? ' — وتحويلها ما ينحسب صرف' : ''; }
-        else note = ' — بس ما قدرت أقرأ رسالة البنك';
-      } else if (fromTx) { store.attachDebtTx(saved.id, fromTx, 'principal'); note = dir === 'lent' ? ' — وتحويلها ما ينحسب صرف' : ''; }
+      if (d.txId) store.attachDebtTx(saved.id, d.txId, 'principal');
       closeSheet();
-      toast(`✅ انحفظ: ${dir === 'lent' ? 'سلّفت' : 'استلفت من'} ${esc(person)} ${money(amount, 0)} ر.س${note}`, 5000);
+      toast(`✅ انحفظ: ${dir === 'lent' ? 'سلّفت' : 'استلفت من'} ${esc(person)} ${money(amount, 0)} ر.س`, 3500);
     };
   });
 }
@@ -1038,7 +1037,7 @@ function openDebtDetail(id) {
       <div><b class="${rem > 0 ? (lent ? 'good' : 'bad') : ''}">${money(rem, 0)}</b><span>المتبقي</span></div></div>
     ${pctBar((paid / d.amount) * 100, lent ? 'var(--good)' : 'var(--danger)')}
     ${d.dueDate && rem > 0 ? `<p class="small ${new Date(`${d.dueDate}T23:59:59`) < new Date() ? 'bad' : 'muted'}">📅 موعد السداد: ${esc(dayFmt.format(new Date(`${d.dueDate}T12:00:00`)))}${new Date(`${d.dueDate}T23:59:59`) < new Date() ? ' (متأخر)' : ''}</p>` : ''}
-    ${rem > 0 ? `<button class="btn primary block" id="dd-pay">💰 ${lent ? 'استلمت سداد' : 'سدّدت'}</button>` : '<p class="good small">✅ مسدّد بالكامل</p>'}
+    ${rem > 0 ? `<button class="btn primary block" id="dd-pay">${lent ? 'استلمت جزء من المبلغ' : 'سدّدت جزء من المبلغ'}</button>` : '<p class="good small">✅ مسدّد بالكامل</p>'}
     ${rem > 0 && lent ? `<a class="btn block" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(remind)}">📲 ذكّره بواتساب</a>` : ''}
     <div class="sec-title">السجل</div>
     <ul class="list">${pays.map((x) => `<li class="row" style="cursor:default"><div class="main"><div class="title">${lent ? 'استلمت' : 'سدّدت'}${x.txId ? ' <span class="badge">من رسالة بنك</span>' : ''}</div>
@@ -1060,19 +1059,8 @@ function openPaymentSheet(id) {
     <p class="muted small">المتبقي ${money(rem, 0)} ر.س</p>
     <label class="field">المبلغ (ر.س)<input type="text" data-num inputmode="decimal" id="p-amount" value="${rem}"></label>
     <label class="field">التاريخ<input type="date" id="p-date" value="${todayInput()}"></label>
-    <label class="field">رسالة البنك <span class="small">(اختياري: لو لصقتها أستخدم مبلغها وتاريخها)</span>
-      <textarea id="p-sample" dir="auto" style="min-height:80px"></textarea></label>
-    <button class="btn block" id="p-paste" style="margin-top:0">📋 لصق من الحافظة</button>
     <button class="btn primary block" id="p-save">حفظ</button>`, (p) => {
-    $('#p-paste', p).onclick = async () => { try { $('#p-sample', p).value = await navigator.clipboard.readText(); } catch { toast('الصقها يدوياً'); } };
     $('#p-save', p).onclick = () => {
-      const sample = $('#p-sample', p).value.trim();
-      if (sample) {
-        const r = store.debtMessageTx(sample);
-        if (!r.ok) return toast('ما قدرت أقرأ الرسالة — تأكد إنها رسالة التحويل كاملة');
-        store.attachDebtTx(id, r.tx.id, 'payment');
-        closeSheet(); return toast(`✅ سجّلت السداد ${money(r.tx.amount)} ر.س${lent ? '' : ' (ينحسب التزام، مو من حدك اليومي)'}`, 5000);
-      }
       const amount = parseFloat($('#p-amount', p).value);
       if (!(amount > 0)) return toast('اكتب المبلغ');
       if (amount > rem + 0.004) return toast(`المبلغ أكبر من المتبقي (${fmt(rem, 2)})`);
@@ -1105,14 +1093,9 @@ function openCommitmentSheet(c = {}, focusSample = false) {
     </div>
     <label class="field">كلمة تظهر في رسالة البنك عند السداد <span class="small">(اختياري: عشان أربط عمليات السداد بهذا الالتزام وما أحسبها من حدك اليومي)</span>
       <input type="text" id="c-key" value="${esc(c.keyword || '')}" placeholder="مثلاً: tabby أو اسم المؤجر"></label>
-    <label class="field">رسالة البنك لسداد هذا الالتزام <span class="small">(الصقها مرة وحدة، وبعدها أتعرّف على رسائل السداد الجاية لحالي)</span>
-      <textarea id="c-sample" dir="auto" style="min-height:90px" placeholder="مثلاً: خصم مبلغ: SAR 2,500 … إلى: …">${esc(c.sample || '')}</textarea></label>
-    ${c.signature ? `<p class="small good" style="margin-top:-4px">✅ متعلّمها${c.signature.merchant ? ` — التاجر: ${esc(c.signature.merchant)}` : c.signature.target ? ` — المستفيد •${esc(c.signature.target)}` : ` — المبلغ ${fmt(c.signature.amount)}`}</p>` : ''}
-    <button class="btn block" id="c-paste" style="margin-top:0">📋 لصق من الحافظة</button>
+    <label class="switch"><input type="checkbox" id="c-approx" ${c.approx ? 'checked' : ''}> المبلغ تقريبي (يزيد أحياناً مثل فاتورة الجوال)</label>
     <button class="btn primary block" id="c-save">حفظ</button>
     ${c.id ? '<button class="btn danger block" id="c-del">حذف</button>' : ''}`, (p) => {
-    $('#c-paste', p).onclick = async () => { try { $('#c-sample', p).value = await navigator.clipboard.readText(); } catch { toast('الصقها يدوياً في الخانة'); } };
-    if (focusSample) setTimeout(() => $('#c-sample', p).scrollIntoView({ block: 'center' }), 50);
     const sync = () => { $('#c-finite', p).hidden = !['installment', 'loan'].includes($('#c-kind', p).value); };
     $('#c-kind', p).onchange = sync; sync();
     $('#c-save', p).onclick = () => {
@@ -1122,16 +1105,13 @@ function openCommitmentSheet(c = {}, focusSample = false) {
       const kind = $('#c-kind', p).value;
       const finite = ['installment', 'loan'].includes(kind);
       const startDate = $('#c-start', p).value;
-      const sample = $('#c-sample', p).value.trim();
-      const saved = store.saveCommitment({
-        id: c.id, kind, name, amount, keyword: $('#c-key', p).value.trim(),
+      store.saveCommitment({
+        id: c.id, kind, name, amount, keyword: $('#c-key', p).value.trim(), approx: $('#c-approx', p).checked,
         day: parseInt($('#c-day', p).value, 10) || (startDate ? new Date(startDate).getDate() : 1),
         provider: finite ? $('#c-provider', p).value : '', total: finite ? parseInt($('#c-total', p).value, 10) || 0 : 0,
         startDate: finite ? startDate : '',
       });
-      closeSheet();
-      if (sample && sample !== (c.sample || '')) linkResult(store.linkCommitmentMessage(saved.id, sample), saved);
-      else toast('✅ انحفظ الالتزام');
+      closeSheet(); toast('✅ انحفظ الالتزام');
     };
     $('#c-del', p)?.addEventListener('click', () => { if (confirm('تحذف الالتزام؟')) { store.deleteCommitment(c.id); closeSheet(); } });
   });

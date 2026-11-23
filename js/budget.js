@@ -97,6 +97,8 @@ export function paidInRange(c, txs, commitments, range) {
 export const COMMITMENT_KINDS = {
   rent: { name: 'إيجار', icon: '🏠' },
   bill: { name: 'فاتورة', icon: '🧾' },
+  phone: { name: 'جوال وإنترنت', icon: '📱' },
+  family: { name: 'عائلة', icon: '❤️' },
   installment: { name: 'تقسيط (تابي/تمارا)', icon: '🧩' },
   loan: { name: 'قرض', icon: '🏦' },
   subscription: { name: 'اشتراك', icon: '🔁' },
@@ -407,3 +409,27 @@ export function detectSalary(txs) {
   return s ? { amount: s.amount, day: new Date(s.date).getDate() } : null;
 }
 export const normKey = normalizeMerchant;
+
+// ---------------- أيقونة الالتزام وحالة هالدورة ----------------
+const FAMILY = /ماما|الوالدة|والدتي|أمي|امي|أبوي|ابوي|بابا|والدي|الوالد|الأهل|الاهل/;
+const PHONE = /جوال|موبايل|موبايلي|اتصالات|انترنت|إنترنت|\bstc\b|زين|mobily|zain/i;
+/** الأيقونة تنحدد من النوع، أو من الاسم لو النوع عام (ماما ← قلب، موبايلي ← جوال) */
+export function commitIcon(c) {
+  const n = c.name || '';
+  if (c.kind === 'family' || (['other', 'bill'].includes(c.kind) && FAMILY.test(n))) return '❤️';
+  if (c.kind === 'phone' || (['other', 'bill'].includes(c.kind) && PHONE.test(n))) return '📱';
+  return (COMMITMENT_KINDS[c.kind] || COMMITMENT_KINDS.other).icon;
+}
+export function commitTint(c) {
+  const i = commitIcon(c);
+  return i === '❤️' ? '#ff375f' : i === '📱' ? '#30b158' : '#ff8a00';
+}
+/** سُدّد هالدورة؟ علامة يدوية، أو رسالة سداد مربوطة */
+export function commitmentDone(c, key, txs, commitments, cyc) {
+  return !!c.paid?.[key] || paidInRange(c, txs, commitments, cyc).length > 0;
+}
+/** المحفظة تحوّلت هالدورة؟ علامة يدوية، أو تحويلات فعلية بقدر المبلغ */
+export function investmentDone(inv, key, got) {
+  const amt = investAmount(inv, key);
+  return !!inv.done?.[key] || (amt > 0 && got >= amt);
+}

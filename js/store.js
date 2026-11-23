@@ -85,9 +85,11 @@ export function addMessage(text, { sender = '', receivedAt, persist = true } = {
   }
   const { category, source } = categorize(parsed, state.rules);
   const tx = { id: uid(), ...parsed, category, categorySource: source, addedAt: new Date().toISOString() };
-  const inv = matchInvestment(tx, state.investments);
+  const dd = tx.type !== 'income' && state.debts.find((d) => d.direction === 'lent' && !d.principalTxId && Math.abs(d.amount - tx.amount) < 0.5 && Math.abs(new Date(tx.date) - new Date(d.date)) < 4 * 864e5);
+  if (dd) { applyDebtLink(tx, dd, 'principal'); dd.principalTxId = tx.id; }
+  const inv = !dd && matchInvestment(tx, state.investments);
   if (inv) tx.investmentId = inv.id;
-  const linked = !inv && matchCommitment(tx, state.commitments);
+  const linked = !dd && !inv && matchCommitment(tx, state.commitments);
   if (linked) tx.commitmentId = linked.id;
   state.txs.push(tx);
   registerCard(tx);
@@ -198,7 +200,7 @@ export function linkCommitmentMessage(commitmentId, text) {
   if (!tx) {
     const res = addMessage(clean, { persist: false });
     if (res.status !== 'added') { save(); return { ok: false, reason: res.status }; }
-    tx = res.tx; status = 'added';
+    tx = res.tx; status = 'added'; tx.viaLink = true;
   }
   c.signature = commitmentSignature(tx);
   c.sample = clean;
@@ -236,7 +238,7 @@ export function linkInvestmentMessage(id, text) {
   if (!tx) {
     const res = addMessage(clean, { persist: false });
     if (res.status !== 'added') { save(); return { ok: false, reason: res.status }; }
-    tx = res.tx; status = 'added';
+    tx = res.tx; status = 'added'; tx.viaLink = true;
   }
   inv.signature = commitmentSignature(tx);
   inv.sample = clean;
@@ -283,7 +285,13 @@ function unlinkDebtTx(tx) {
 export function saveDebt(d) {
   let saved;
   if (d.id) state.debts = state.debts.map((x) => (x.id === d.id ? (saved = { ...x, ...d }) : x));
-  else state.debts.unshift(saved = { payments: [], ...d, id: uid() });
+  else {
+    state.debts.unshift(saved = { payments: [], ...d, id: uid() });
+    if (saved.direction === 'lent') {
+      const t = state.txs.find((x) => !x.debtId && !x.investmentId && !x.commitmentId && x.type !== 'income' && Math.abs(x.amount - saved.amount) < 0.5 && Math.abs(new Date(x.date) - new Date(saved.date)) < 4 * 864e5);
+      if (t) { applyDebtLink(t, saved, 'principal'); saved.principalTxId = t.id; }
+    }
+  }
   save();
   return saved;
 }
@@ -335,6 +343,36 @@ export function deleteDebtPayment(debtId, paymentId) {
   if (tx) unlinkDebtTx(tx);
   d.payments = d.payments.filter((x) => x.id !== paymentId);
   save();
+}
+
+// ---------- علامات «تم» لكل دورة ----------
+const flip = (obj, key) => { const o = { ...(obj || {}) }; if (o[key]) delete o[key]; else o[key] = true; return o; };
+export function toggleCommitmentPaid(id, key) { const c = state.commitments.find((x) => x.id === id); if (c) { c.paid = flip(c.paid, key); save(); } }
+export function toggleInvestmentDone(id, key) { const i = state.investments.find((x) => x.id === id); if (i) { i.done = flip(i.done, key); save(); } }
+/** تسوية الدين بالكامل بضغطة، والضغطة الثانية تلغيها */
+export function toggleDebtSettled(id) {
+  const d = state.debts.find((x) => x.id === id); if (!d) return false;
+  const rem = Math.max(d.amount - d.payments.reduce((a, p) => a + (+p.amount || 0), 0), 0);
+  if (rem > 0.004) { d.payments.push({ id: uid(), amount: rem, date: new Date().toISOString(), settle: true }); save(); return true; }
+  d.payments = d.payments.filter((p) => !p.settle); save(); return false;
+}
+/** يفك ربط عملية بالتزام/محفظة (من شاشة العملية) */
+export function unlinkTx(txId) {
+  const t = state.txs.find((x) => x.id === txId); if (!t) return;
+  if (t.commitmentId && t.bucket === 'commitment') delete t.bucket;
+  delete t.commitmentId; delete t.investmentId; delete t.viaLink; save();
+}
+/** يمسح الرسالة اللي اتعلّمها التزام/محفظة، ولو العملية انضافت بسبب الربط تنحذف معها */
+export function clearLink(kind, id) {
+  const c = (kind === 'inv' ? state.investments : state.commitments).find((x) => x.id === id); if (!c) return;
+  const field = kind === 'inv' ? 'investmentId' : 'commitmentId';
+  const sample = (c.sample || '').trim();
+  state.txs = state.txs.filter((t) => {
+    if (t[field] !== id || !sample || (t.raw || '').trim() !== sample) return true;
+    if (t.viaLink) return false;
+    delete t[field]; if (kind === 'com' && t.bucket === 'commitment') delete t.bucket; return true;
+  });
+  delete c.signature; delete c.sample; save();
 }
 
 export function deleteCommitment(id) { state.commitments = state.commitments.filter((c) => c.id !== id); save(); }
