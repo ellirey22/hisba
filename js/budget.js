@@ -1,6 +1,7 @@
 // الميزانية: دورة الراتب، الحد اليومي مع الترحيل، الالتزامات، تقارير الدورة، والعادات
 import { normalizeMerchant } from './categories.js';
 import { sar } from './insights.js';
+import { normalizeText } from './parser.js';
 
 const DAY = 864e5;
 const dim = (y, m) => new Date(y, m + 1, 0).getDate();
@@ -31,13 +32,43 @@ export function bucketOf(tx, state) {
   return 'daily';
 }
 
+/** رقم المستفيد/الحساب المحوَّل له (آخر ٤ أرقام) من نص الرسالة */
+export function extractTarget(raw = '') {
+  const t = normalizeText(raw);
+  const m = t.match(/(?:إلى|الى|to|المستفيد|beneficiary|لحساب|للحساب|IBAN|آيبان|ايبان)[^\d\n]{0,25}?[*xX•]*\s*(?:SA\d{2}[\d\s]*)?(\d{4})\b(?![\d/:-])/i);
+  return m ? m[1] : '';
+}
+
+/** بصمة رسالة سداد الالتزام: نتعلّمها من رسالة نموذجية يلصقها المستخدم مرة وحدة */
+export function commitmentSignature(tx) {
+  return {
+    merchant: normalizeMerchant(tx.merchant), target: extractTarget(tx.raw), type: tx.type,
+    amount: tx.amount, bank: tx.bank,
+  };
+}
+
 export function matchCommitment(tx, commitments = []) {
+  if (!commitments.length) return null;
+  if (tx.commitmentId) { const c = commitments.find((x) => x.id === tx.commitmentId); if (c) return c; }
   const m = normalizeMerchant(tx.merchant);
-  if (!m) return null;
-  return commitments.find((c) => {
+  const target = tx.raw ? extractTarget(tx.raw) : '';
+  for (const c of commitments) {
     const k = normalizeMerchant(c.keyword || '');
-    return k && (m === k || m.includes(k));
-  }) || null;
+    if (k && m && (m === k || m.includes(k))) return c;
+    const sig = c.signature;
+    if (!sig) continue;
+    if (sig.merchant && m && (m === sig.merchant || m.startsWith(sig.merchant + ' ') || sig.merchant.startsWith(m + ' '))) return c;
+    if (sig.target && target && sig.target === target) return c;
+    // رسالة بدون تاجر ولا مستفيد (مثل خصم قسط القرض): نفس البنك والنوع والمبلغ تقريباً
+    if (!sig.merchant && !sig.target && sig.type === tx.type && sig.bank === tx.bank
+      && Math.abs(sig.amount - tx.amount) <= Math.max(1, sig.amount * 0.01)) return c;
+  }
+  return null;
+}
+
+/** هل انسدد الالتزام في الدورة؟ */
+export function paidInRange(c, txs, commitments, range) {
+  return txs.filter((t) => { const d = new Date(t.date); return d >= range.start && d < range.end && !t.excluded && matchCommitment(t, commitments)?.id === c.id; });
 }
 
 // ---------------- الالتزامات ----------------

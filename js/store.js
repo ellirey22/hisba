@@ -1,6 +1,7 @@
 // تخزين محلي بالكامل على الجهاز (localStorage) — ما فيه أي خادم ولا حساب
 import { categorize, normalizeMerchant } from './categories.js';
 import { parseSMS } from './parser.js';
+import { matchCommitment, commitmentSignature } from './budget.js';
 
 const KEY = 'hisba.v1';
 
@@ -81,6 +82,8 @@ export function addMessage(text, { sender = '', receivedAt, persist = true } = {
   }
   const { category, source } = categorize(parsed, state.rules);
   const tx = { id: uid(), ...parsed, category, categorySource: source, addedAt: new Date().toISOString() };
+  const linked = matchCommitment(tx, state.commitments);
+  if (linked) tx.commitmentId = linked.id;
   state.txs.push(tx);
   registerCard(tx);
   if (persist) save();
@@ -157,10 +160,39 @@ export function dismissSub(key) { state.settings.dismissedSubs.push(key); save()
 export function updateBudget(patch) { state.settings.budget = { ...state.settings.budget, ...patch }; save(); }
 
 export function saveCommitment(c) {
-  if (c.id) state.commitments = state.commitments.map((x) => (x.id === c.id ? { ...x, ...c } : x));
-  else state.commitments.push({ ...c, id: uid() });
+  let saved;
+  if (c.id) state.commitments = state.commitments.map((x) => (x.id === c.id ? (saved = { ...x, ...c }) : x));
+  else state.commitments.push(saved = { ...c, id: uid() });
   save();
+  return saved;
 }
+/**
+ * يربط رسالة بنك نموذجية بالتزام: يتعلّم بصمتها، ويسجّل العملية (لو ما كانت مسجّلة) كسداد لهذا الالتزام.
+ * يرجع { ok, status, tx } أو { ok:false } لو الرسالة ما انقرأت.
+ */
+export function linkCommitmentMessage(commitmentId, text) {
+  const c = state.commitments.find((x) => x.id === commitmentId);
+  const clean = String(text || '').trim();
+  if (!c || !clean) return { ok: false };
+  let tx = state.txs.find((t) => (t.raw || '').trim() === clean);
+  let status = 'existing';
+  if (!tx) {
+    const res = addMessage(clean, { persist: false });
+    if (res.status !== 'added') { save(); return { ok: false, reason: res.status }; }
+    tx = res.tx; status = 'added';
+  }
+  c.signature = commitmentSignature(tx);
+  c.sample = clean;
+  tx.commitmentId = c.id; tx.bucket = 'commitment';
+  // نربط العمليات السابقة اللي تطابق البصمة الجديدة
+  let n = 0;
+  for (const t of state.txs) {
+    if (t !== tx && !t.commitmentId && matchCommitment(t, [c])) { t.commitmentId = c.id; n++; }
+  }
+  save();
+  return { ok: true, status, tx, linkedOld: n };
+}
+
 export function deleteCommitment(id) { state.commitments = state.commitments.filter((c) => c.id !== id); save(); }
 
 /** يحدد نوع الصرف (يومي/شهري) لعملية، ولو طلب المستخدم يتذكّره للتاجر */

@@ -168,3 +168,8 @@ details summary { cursor: pointer; font-weight: 700; }
 .habits li:last-child { border-bottom: 0; }
 .habits .hi { font-size: 22px; }
 .seg button { font-size: 14px; }
+
+.alert-card { border: 1.5px dashed var(--primary); }
+.alert-card p { margin: 4px 0 8px; }
+.sample-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.link-hint { color: var(--primary); font-weight: 600; }

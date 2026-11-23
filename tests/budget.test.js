@@ -1,6 +1,7 @@
 // اختبارات الميزانية: الدورة، الحد اليومي والترحيل، الالتزامات، التقارير
 import assert from 'node:assert/strict';
-import { cycleFor, today, commitmentStatus, cycleReport, bucketOf, habits } from '../js/budget.js';
+import { cycleFor, today, commitmentStatus, cycleReport, bucketOf, habits, matchCommitment, commitmentSignature, extractTarget } from '../js/budget.js';
+import { parseSMS } from '../js/parser.js';
 
 let pass = 0, fail = 0;
 const t = (name, fn) => { try { fn(); pass++; console.log('✓', name); } catch (e) { fail++; console.log('✗', name, '—', e.message); } };
@@ -95,6 +96,31 @@ t('العادات تطلع جمل', () => {
   for (let i = 0; i < 40; i++) txs.push({ type: 'purchase', amount: 18, date: new Date(D('2026-11-23') - i * 2 * 864e5).toISOString(), merchant: 'BARNS', category: 'restaurants' });
   const h = habits(base(), txs, D('2026-11-23'), { restaurants: { name: 'مطاعم', icon: '🍔' } });
   assert.ok(h.length >= 1); assert.ok(h.some((x) => x.text.includes('BARNS')));
+});
+// بصمة رسائل الالتزامات
+const P = (t, sender = 'alinma') => ({ ...parseSMS(t, { sender }), id: Math.random() });
+t('بصمة الإيجار من المستفيد (حوالة)', () => {
+  const nov = P('حوالة محلية صادرة\nمن: **2000\nإلى: SA03 8000 0000 6080 1016 7519\nالمستفيد: أبو فهد العقارية\nمبلغ: SAR 2,500\nفي: 01-11-2026 09:12');
+  const rent = { id: 'r', name: 'إيجار', signature: commitmentSignature(nov) };
+  assert.equal(extractTarget(nov.raw), '7519');
+  const dec = P('حوالة محلية صادرة\nمن: **2000\nإلى: SA03 8000 0000 6080 1016 7519\nالمستفيد: أبو فهد العقارية\nمبلغ: SAR 2,500\nفي: 01-12-2026 10:40');
+  assert.equal(matchCommitment(dec, [rent])?.id, 'r');
+  const other = P('حوالة محلية صادرة\nمن: **2000\nإلى: SA44 2000 0001 2345 6789 1111\nمبلغ: SAR 2,500');
+  assert.equal(matchCommitment(other, [rent]), null);
+});
+t('بصمة القسط من اسم التاجر', () => {
+  const nov = P('شراء إنترنت بـSR 250\nعبر6196;فيزا\nلـTABBY\nرصيد:100 SR', 'AlRajhiBank');
+  const c = { id: 't', name: 'قسط الجوال', signature: commitmentSignature(nov) };
+  const dec = P('شراء إنترنت بـSR 250\nعبر6196;فيزا\nلـTabby\nرصيد:50 SR', 'AlRajhiBank');
+  assert.equal(matchCommitment(dec, [c])?.id, 't');
+  assert.equal(matchCommitment(P('شراء إنترنت بـSR 250\nعبر6196;فيزا\nلـNOON', 'AlRajhiBank'), [c]), null);
+});
+t('بصمة القرض من المبلغ والبنك', () => {
+  const nov = P('خصم قسط تمويل\nمبلغ: SAR 1,830.50\nمن حساب: **2000\nفي: 27-11-2026');
+  const c = { id: 'l', name: 'قرض', signature: commitmentSignature(nov) };
+  assert.equal(matchCommitment(P('خصم قسط تمويل\nمبلغ: SAR 1,830.50\nمن حساب: **2000\nفي: 27-12-2026'), [c])?.id, 'l');
+  assert.equal(matchCommitment(P('خصم قسط تمويل\nمبلغ: SAR 900\nمن حساب: **2000'), [c]), null);
+  assert.equal(matchCommitment(P('خصم قسط تمويل\nمبلغ: SAR 1,830.50', 'AlRajhiBank'), [c]), null);
 });
 console.log(`\n${pass}/${pass + fail} نجحت`);
 if (fail) process.exit(1);
