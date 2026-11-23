@@ -40,7 +40,7 @@ const MODES = { auto: 'تلقائي', light: 'فاتح', dark: 'داكن' };
 function applyAppearance() {
   const { theme, mode, privacy } = store.getState().settings; const root = document.documentElement;
   root.classList.toggle('privacy', !!privacy);
-  const eye = document.getElementById('eye-btn'); if (eye) eye.innerHTML = svg(privacy ? 'eye-slash' : 'eye', 'r');
+  const eye = document.getElementById('eye-btn'); if (eye) eye.innerHTML = svg(privacy ? 'eye-closed' : 'eye', 'r');
   root.dataset.theme = THEMES[theme] ? theme : 'blue';
   if (mode === 'light' || mode === 'dark') root.dataset.mode = mode; else delete root.dataset.mode;
   const dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
@@ -224,10 +224,41 @@ function announce(res) {
         : `🎲 تحويل «${esc(iv.name)}»: <b>${money(t.amount)}</b> — ${c.pct >= 80 ? '⚠️ ' : ''}باقي لك من السقف ${money(c.left, 0)} ر.س من ${money(iv.cap, 0)}، وحدك اليومي اتعدّل`, 7000);
     } else if (iv) toast(`📈 تحويل استثمار «${esc(iv.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب صرف${iv.variable ? '، وحدك اليومي اتعدّل' : ''}`, 5000);
     else if (cm) toast(`📌 سداد التزام «${esc(cm.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب من حدك اليومي`);
-    else toast(`${c.icon} انضافت: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ${esc(t.merchant || 'بدون اسم')} (${c.name})`);
+    else if (t.type === 'purchase' && (!t.merchant || t.categorySource === 'default')) {
+      toast(`❓ انضافت <b>${money(t.amount)} ${curLabel(t.currency)}</b> بس ما عرفت وين — حدّد المكان والتصنيف`, 4500);
+      setTimeout(() => openTxSheet(t.id), 450);
+    } else toast(`${c.icon} انضافت: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ${esc(t.merchant || 'بدون اسم')} (${c.name})`);
   } else if (res.status === 'duplicate') toast('هذي الرسالة مضافة من قبل 👌');
-  else if (res.status === 'unparsed') toast('ما قدرت أفهم الرسالة، حفظتها في الإعدادات ← «رسائل ما انقرأت»');
+  else if (res.status === 'unparsed') { toast('ما فهمت الرسالة — عدّلها وأنا أحفظها'); const u = store.getState().unparsed[0]; if (u) setTimeout(() => openFixSheet(u), 350); }
   else toast('الرسالة مو عملية مالية (رمز تحقق أو عملية مرفوضة) — تم تجاهلها');
+}
+
+// ---------------- احتفالات «تم» ----------------
+function celebrate(kind, { name = '', amount = 0, x, y, title = '' }) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  navigator.vibrate?.(kind === 'debt' ? [15, 40, 25] : 18);
+  document.querySelector('.fx')?.remove();
+  const fx = document.createElement('div'); fx.className = `fx fx-${kind}`;
+  x = x ?? innerWidth / 2; y = y ?? innerHeight / 2;
+  fx.style.setProperty('--x', x + 'px'); fx.style.setProperty('--y', y + 'px');
+  const R = (a, b) => a + Math.random() * (b - a);
+  let core = '', bits = '';
+  if (kind === 'commit') {
+    core = `<svg viewBox="0 0 100 100"><circle class="disc" cx="50" cy="50" r="44"/><path class="draw" d="M30 52 L45 66 L71 36"/></svg>`;
+    const cols = ['#ff9f0a', '#ffd60a', '#ff453a', '#64d2ff', '#bf5af2', '#30d158'];
+    for (let i = 0; i < 46; i++) bits += `<p style="left:${R(0, 100)}vw;top:-20px;background:${cols[i % 6]};animation-duration:${R(1.6, 3)}s;animation-delay:${R(0, .7)}s;--dx:${R(-60, 60)}px;--r:${R(200, 700)}deg"></p>`;
+  } else if (kind === 'invest') {
+    core = `<svg viewBox="0 0 100 100"><circle class="disc" cx="50" cy="50" r="44"/><path class="draw" d="M24 66 L40 50 L52 58 L74 32"/><path class="draw" style="animation-delay:.95s;stroke-dasharray:60;stroke-dashoffset:60" d="M60 32 H74 V46"/></svg>`;
+    for (let i = 0; i < 26; i++) { const sz = R(10, 34); bits += `<p style="left:${R(2, 96)}vw;top:100vh;width:${sz}px;height:${sz}px;--dx:${R(-40, 40)}px;animation-duration:${R(1.8, 3.2)}s;animation-delay:${R(0, 1)}s"></p>`; }
+  } else {
+    core = `<svg viewBox="0 0 100 100"><circle class="disc" cx="50" cy="50" r="44"/></svg><div class="hs">${svg('handshake' in {} ? 'handshake' : 'check', 'f')}</div>`;
+    for (let i = 0; i < 24; i++) { const a = R(0, Math.PI * 2), d = R(90, 190); bits += `<p style="--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d - 40}px;--r:${R(-300, 300)}deg;--d:${R(.25, .6)}s"></p>`; }
+  }
+  fx.innerHTML = `<span class="fx-ring"></span><span class="fx-ring r2"></span><span class="fx-ring r3"></span><div class="fx-core">${core}</div>${bits}
+    <div class="fx-card"><span>${title}</span><b>${esc(name)}</b>${amount ? `<em>${money(amount, 0)}</em>` : ''}</div>`;
+  document.body.appendChild(fx);
+  const close = () => { fx.classList.add('out'); setTimeout(() => fx.remove(), 400); };
+  fx.onclick = close; setTimeout(close, 2800);
 }
 
 // ---------------- التنقّل ----------------
@@ -236,7 +267,7 @@ document.querySelectorAll('.tabbar button').forEach((b) => b.addEventListener('c
   syncTabs();
   render(); scrollTo({ top: 0, behavior: 'smooth' });
 }));
-$('#add-btn').addEventListener('click', openAddSheet);
+$('#paste-btn').innerHTML = svg('clipboard-text', 'r');
 $('#eye-btn').addEventListener('click', () => {
   const on = !store.getState().settings.privacy;
   ui.skipRender = true; store.updateSettings({ privacy: on }); applyAppearance();
@@ -247,10 +278,7 @@ $('#paste-btn').addEventListener('click', async () => {
   try { text = await navigator.clipboard.readText(); } catch { /* المستخدم رفض أو المتصفح ما يدعم */ }
   if (tryBackup(text) || trySetup(text)) return;
   const items = splitBatch(text || '');
-  if (!items.length) {
-    openAddSheet();
-    return toast('انسخ رسالة البنك أولاً، أو الصقها هنا يدوياً');
-  }
+  if (!items.length) return toast('انسخ رسالة البنك أولاً ثم اضغط هنا');
   if (items.length === 1) announce(store.addMessage(items[0].text, items[0]));
   else importReport(store.addMany(items));
 });
@@ -296,10 +324,7 @@ function renderHome() {
   const all = visibleTxs();
   if (!s.txs.length) {
     view.innerHTML = `<div class="empty"><div class="big">🧮</div><h2>جاهز نبدأ؟</h2>
-      <p>انسخ أي رسالة من البنك وأضفها بضغطة، وأنا أصنّفها وأحسب لك كل شي.</p>
-      <div class="btns"><button class="btn primary" id="go-paste">📋 لصق رسالة</button><button class="btn" id="go-add">إضافة يدوية</button></div></div>`;
-    $('#go-paste').onclick = () => $('#paste-btn').click();
-    $('#go-add').onclick = openAddSheet;
+      <p>انسخ أي رسالة من البنك واضغط أيقونة اللصق فوق، وأنا أصنّفها وأحسب لك كل شي.</p></div>`;
     return;
   }
   const B = s.settings.budget;
@@ -399,6 +424,7 @@ function upcomingCard() {
 function syncTabs() {
   const btns = [...document.querySelectorAll('.tabbar button')];
   btns.forEach((x) => x.classList.toggle('active', x.dataset.tab === ui.tab));
+  document.body.dataset.tab = ui.tab;
   $('#tabbar').style.setProperty('--i', Math.max(btns.findIndex((x) => x.dataset.tab === ui.tab), 0));
 }
 
@@ -523,46 +549,24 @@ function openTxSheet(id) {
   });
 }
 
-// ---------------- إضافة ----------------
-function openAddSheet() {
+// ---------------- تعديل رسالة ما انفهمت ----------------
+function openFixSheet(u) {
+  const num = (u.text.match(/\d+(?:[.,]\d+)?/) || [''])[0].replace(',', '.');
   openSheet(`
-    <h3>إضافة عملية</h3>
-    <div class="seg"><button class="active" data-m="sms">لصق رسالة بنك</button><button data-m="manual">إدخال يدوي</button></div>
-    <div id="m-sms">
-      <textarea id="sms-text" dir="auto" placeholder="الصق نص رسالة البنك هنا (تقدر تلصق أكثر من رسالة، افصل بينها بسطر فاضي)"></textarea>
-      <div class="btns" style="margin-top:8px"><button class="btn" id="paste">📋 لصق من الحافظة</button><button class="btn primary" id="add-sms">إضافة</button></div>
-    </div>
-    <div id="m-manual" hidden>
-      <label class="field">المبلغ (ر.س)<input type="text" data-num step="0.01" inputmode="decimal" id="m-amount"></label>
-      <label class="field">المكان / التاجر<input type="text" id="m-merchant"></label>
-      <label class="field">التصنيف<select id="m-cat"><option value="">تلقائي</option>${Object.entries(CATEGORIES).map(([k, c]) => `<option value="${k}">${c.icon} ${c.name}</option>`).join('')}</select></label>
-      <label class="field">التاريخ<input type="datetime-local" id="m-date"></label>
-      <button class="btn primary block" id="add-manual">إضافة</button>
-    </div>`, (p) => {
-    const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    $('#m-date', p).value = d.toISOString().slice(0, 16);
-    p.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
-      p.querySelectorAll('[data-m]').forEach((x) => x.classList.toggle('active', x === b));
-      $('#m-sms', p).hidden = b.dataset.m !== 'sms'; $('#m-manual', p).hidden = b.dataset.m !== 'manual';
-    });
-    $('#paste', p).onclick = async () => {
-      try { $('#sms-text', p).value = await navigator.clipboard.readText(); } catch { toast('ما قدرت أقرأ الحافظة — الصق يدوياً'); }
-    };
-    $('#add-sms', p).onclick = () => {
-      if (tryBackup($('#sms-text', p).value) || trySetup($('#sms-text', p).value)) return closeSheet();
-      const items = splitBatch($('#sms-text', p).value);
-      if (!items.length) return;
-      closeSheet();
-      if (items.length === 1) announce(store.addMessage(items[0].text, items[0]));
-      else importReport(store.addMany(items));
-    };
-    $('#add-manual', p).onclick = () => {
-      const amount = parseFloat($('#m-amount', p).value);
+    <h3>ما فهمت هالرسالة</h3>
+    <div class="raw" dir="auto">${esc(u.text)}</div>
+    <label class="field">المبلغ (ر.س)<input type="text" data-num inputmode="decimal" id="f-amount" value="${num}"></label>
+    <label class="field">المكان / التاجر<input type="text" id="f-merchant"></label>
+    <label class="field">التصنيف<select id="f-cat"><option value="">تلقائي</option>${Object.entries(CATEGORIES).map(([k, c]) => `<option value="${k}">${c.icon} ${c.name}</option>`).join('')}</select></label>
+    <div class="btns"><button class="btn primary" id="f-save">حفظ</button><button class="btn danger" id="f-del">تجاهل الرسالة</button></div>`, (p) => {
+    $('#f-save', p).onclick = () => {
+      const amount = parseFloat($('#f-amount', p).value);
       if (!(amount > 0)) return toast('اكتب المبلغ');
-      const tx = store.addManual({ amount, merchant: $('#m-merchant', p).value.trim(), date: new Date($('#m-date', p).value).toISOString(),
-        ...($('#m-cat', p).value ? { category: $('#m-cat', p).value, categorySource: 'manual' } : {}) });
-      closeSheet(); announce({ status: 'added', tx });
+      const tx = store.addManual({ amount, merchant: $('#f-merchant', p).value.trim(), date: u.date, raw: u.text, bank: u.sender || 'يدوي',
+        ...($('#f-cat', p).value ? { category: $('#f-cat', p).value, categorySource: 'manual' } : {}) });
+      store.removeUnparsed(u.id); closeSheet(); announce({ status: 'added', tx });
     };
+    $('#f-del', p).onclick = () => { store.removeUnparsed(u.id); closeSheet(); };
   });
 }
 
@@ -633,7 +637,11 @@ function renderReports() {
   const all = visibleTxs();
   const payday = b.payday || 27;
   const hasBudget = b.salary > 0;
-  const range = hasBudget ? budget.cycleFor(new Date(), payday, ui.rOffset) : periodRange('month', ui.rOffset);
+  const st0 = hasBudget ? budget.startOf(s) : null;
+  const ref = st0 && new Date() < st0 ? st0 : new Date();
+  const range = hasBudget ? budget.cycleFor(ref, payday, ui.rOffset) : periodRange('month', ui.rOffset);
+  const canPrev = !hasBudget || !st0 || budget.cycleFor(ref, payday, ui.rOffset - 1).end > st0;
+  if (!canPrev && ui.rOffset < 0 && range.end <= st0) ui.rOffset++;
   const snap = s.archive.find((a) => a.start === range.start.toISOString());
   const p = budget.plan(s);
   const salary = snap?.salary ?? p?.salary ?? 0;
@@ -650,12 +658,12 @@ function renderReports() {
 
   view.innerHTML = `
     <div class="seg">${Object.entries(tabs).map(([k, n]) => `<button data-rt="${k}" class="${ui.rTab === k ? 'active' : ''}">${n}</button>`).join('')}</div>
-    ${['summary', 'places'].includes(ui.rTab) ? `<div class="period"><button id="rprev" aria-label="السابق">→</button>
-      <span class="label">${hasBudget ? 'دورة ' : ''}${label}</span><button id="rnext" aria-label="التالي" ${ui.rOffset >= 0 ? 'disabled' : ''}>←</button></div>` : ''}
+    ${['summary', 'places'].includes(ui.rTab) ? `<div class="period"><button id="rprev" aria-label="السابق" ${canPrev ? '' : 'disabled'}>→</button>
+      <span class="label">${hasBudget ? `دورة ${monthName(budget.cycleKey(range))}<small>${label}</small>` : label}</span><button id="rnext" aria-label="التالي" ${ui.rOffset >= 0 ? 'disabled' : ''}>←</button></div>` : ''}
     ${body}`;
 
   view.querySelectorAll('[data-rt]').forEach((x) => x.onclick = () => { ui.rTab = x.dataset.rt; render(); });
-  $('#rprev')?.addEventListener('click', () => { ui.rOffset--; render(); });
+  $('#rprev')?.addEventListener('click', () => { if (canPrev) { ui.rOffset--; render(); } });
   $('#rnext')?.addEventListener('click', () => { if (ui.rOffset < 0) { ui.rOffset++; render(); } });
   if (ui.rTab === 'summary' && R.total) {
     $('#r-days').appendChild(bars(R.perDay.map((v, i) => ({ value: v, label: String(new Date(range.start.getTime() + i * 864e5).getDate()) })),
@@ -818,7 +826,7 @@ function renderCommitments() {
       return `<li class="row ${st.active ? '' : 'excluded'}" data-c="${c.id}"><div class="ic" style="--tint:${budget.commitTint(c)}">${budget.commitIcon(c)}</div>
         <div class="main"><div class="title">${esc(c.name)}</div><div class="meta wrap">${meta || (budget.COMMITMENT_KINDS[c.kind] || budget.COMMITMENT_KINDS.other).name}</div>
           ${st.paid != null && st.active ? pctBar((st.paid / c.total) * 100, 'var(--orange)') : ''}</div>
-        <div class="amt"><span>${c.approx ? '≈ ' : ''}${money(c.amount, 0)}</span>${st.active ? chk('data-c-paid', c.id, on, 'تم السداد', 'بانتظار') : '<span class="pill">خلص</span>'}</div></li>`;
+        <div class="amt"><span>${c.approx ? '≈ ' : ''}${money(c.amount, 0)}</span>${st.active ? chk('data-c-paid', c.id, on, 'تم السداد') : '<span class="pill">خلص</span>'}</div></li>`;
     }).join('')}</ul>` : '<div class="empty-mini">أضف إيجارك وفواتيرك وأقساطك عشان تنخصم من راتبك قبل ما أحسب حدك اليومي.</div>'}
     ${inst.length || subs.length ? `<div class="sec-title">مقترحات من عملياتك</div>
       ${inst.map((x, i) => `<div class="kv"><span>🧩 ${esc(x.name)} <span class="pill">${x.provider}</span></span><button class="chip small" data-inst="${i}">إضافة</button></div>`).join('')}
@@ -830,9 +838,9 @@ function renderCommitments() {
     ${investmentsSection(cyc)}
     ${debtsSection()}`;
   // علامات «تم»: ما تفتح النافذة، وتتجدد كل دورة لحالها
-  view.querySelectorAll('[data-c-paid]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); store.toggleCommitmentPaid(b.dataset.cPaid, ckey); });
-  view.querySelectorAll('[data-inv-done]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); store.toggleInvestmentDone(b.dataset.invDone, ckey); });
-  view.querySelectorAll('[data-settle]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); if (store.toggleDebtSettled(b.dataset.settle)) confetti(); });
+  view.querySelectorAll('[data-c-paid]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); const c = store.getState().commitments.find((x) => x.id === b.dataset.cPaid); const was = b.classList.contains('on'); store.toggleCommitmentPaid(b.dataset.cPaid, ckey); if (!was && c) celebrate('commit', { name: c.name, amount: budget.investAmount ? c.amount : c.amount, x: e.clientX, y: e.clientY, title: 'تم السداد' }); });
+  view.querySelectorAll('[data-inv-done]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); const iv = store.getState().investments.find((x) => x.id === b.dataset.invDone); const was = b.classList.contains('on'); store.toggleInvestmentDone(b.dataset.invDone, ckey); if (!was && iv) celebrate('invest', { name: iv.name, amount: budget.investAmount(iv, ckey), x: e.clientX, y: e.clientY, title: 'تم التحويل' }); });
+  view.querySelectorAll('[data-settle]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); const d = store.getState().debts.find((x) => x.id === b.dataset.settle); if (store.toggleDebtSettled(b.dataset.settle) && d) celebrate('debt', { name: d.person || d.name || '', amount: d.amount, x: e.clientX, y: e.clientY, title: 'انسدّ الدين' }); });
   view.querySelectorAll('[data-debtf]').forEach((b) => b.onclick = () => { ui.debtF = b.dataset.debtf; render(); });
   $('#add-c').onclick = () => openCommitmentSheet();
   $('#add-inv').onclick = () => openInvestmentSheet();
@@ -863,7 +871,7 @@ function renderCommitments() {
   view.querySelectorAll('[data-dismiss]').forEach((b) => b.onclick = () => store.dismissSub(b.dataset.dismiss));
 }
 
-const monthName = (key) => { const [y, m] = key.split('-'); return monthFmt.format(new Date(+y, +m - 1, 1)); };
+const monthName = (key) => { const [y, m] = key.split('-'); return new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { month: 'long' }).format(new Date(+y, +m - 1, 1)); };
 
 function investmentsSection(cyc) {
   const s = store.getState();
@@ -885,7 +893,7 @@ function investmentsSection(cyc) {
           <div class="main"><div class="title">${esc(i.name)}</div>
           <div class="meta wrap">${i.variable ? (i.cap > 0 ? capLine(got, i.cap) : `متغيّر${got ? ` · حوّلت ${money(got, 0)}` : ''}`) : got && !on ? `حوّلت ${money(got, 0)} من ${money(amt, 0)}` : 'شهرياً'}</div>
           ${i.variable && !i.signature ? `<button class="teach" data-inv-link="${i.id}">📩 علّمني رسالة التحويل</button>` : ''}</div>
-          <div class="amt">${i.variable ? (i.cap > 0 ? `<span>${money(i.cap, 0)}</span><span class="pill">سقف</span>` : '—') : `<span>${money(amt, 0)}</span>${chk('data-inv-done', i.id, on, 'تم التحويل', 'بانتظار')}`}</div></li>`;
+          <div class="amt">${i.variable ? (i.cap > 0 ? `<span>${money(i.cap, 0)}</span><span class="pill">سقف</span>` : '—') : `<span>${money(amt, 0)}</span>${chk('data-inv-done', i.id, on, 'تم التحويل')}`}</div></li>`;
       }).join('')}</ul>` : '<div class="empty-mini">مبلغ المحفظة ينخصم من الراتب قبل الحد اليومي، وتحويلاتها ما تنحسب صرف.</div>'}
     <button class="add-link" id="add-inv">＋ إضافة محفظة</button>`;
   return acc('inv', { ico: 'trend-up', tint: '#0a7cff', title: 'الاستثمار', body });
@@ -969,7 +977,7 @@ const fromInput = (v) => new Date(`${v || todayInput()}T12:00:00`).toISOString()
 
 const hueOf = (str) => { let h = 0; for (const ch of String(str)) h = (h * 31 + ch.codePointAt(0)) % 360; return h; };
 /** علامة تفعيل: تضغطها تصير «تم»، وتضغطها مرة ثانية ترجع «بانتظار» */
-const chk = (attr, id, on, onLabel, offLabel) => `<button class="chk ${on ? 'on' : ''}" ${attr}="${id}" aria-pressed="${on}"><span class="chk-c">${svg('check', 'f')}</span>${on ? onLabel : offLabel}</button>`;
+const chk = (attr, id, on, onLabel) => `<button class="chk ${on ? 'on' : ''}" ${attr}="${id}" aria-pressed="${on}" aria-label="${onLabel}"><span class="chk-c">${svg('check', 'r')}</span></button>`;
 
 function debtRow(d, now = new Date()) {
   const rem = budget.debtRemaining(d), paid = budget.debtPaid(d);
@@ -979,7 +987,7 @@ function debtRow(d, now = new Date()) {
   return `<li class="row noic" data-debt="${d.id}">
     <div class="main"><div class="title">${esc(d.person)}${late ? '<span class="pill late" style="margin-inline-start:6px">متأخر</span>' : ''}</div><div class="meta wrap">${meta}</div>
       ${paid > 0 && rem > 0 ? pctBar((paid / d.amount) * 100, lent ? 'var(--green)' : 'var(--red)') : ''}</div>
-    <div class="amt"><span class="${rem > 0 ? (lent ? 'good' : 'bad') : 'muted'}">${money(rem > 0 ? rem : d.amount, 0)}</span>${chk('data-settle', d.id, rem <= 0, 'تم السداد', 'بانتظار')}</div></li>`;
+    <div class="amt"><span class="${rem > 0 ? (lent ? 'good' : 'bad') : 'muted'}">${money(rem > 0 ? rem : d.amount, 0)}</span>${chk('data-settle', d.id, rem <= 0, 'تم السداد')}</div></li>`;
 }
 
 function debtsSection() {
@@ -1179,17 +1187,12 @@ function renderSettings() {
         <button class="btn danger block" id="wipe">حذف كل البيانات</button>` }),
     s.unparsed.length ? acc('unparsed', { ico: 'warning-circle', tint: '#ff3b30', title: 'رسائل ما انقرأت', sub: `${s.unparsed.length}`,
       body: `<div style="margin-top:12px">${s.unparsed.map((u) => `<div style="margin-bottom:12px"><div class="raw" dir="auto">${esc(u.text)}</div>
-      <div class="btns" style="margin-top:8px"><button class="btn" data-manual="${u.id}">إدخال يدوي</button><button class="btn danger" data-rm="${u.id}">حذف</button></div></div>`).join('')}</div>` }) : '',
+      <div class="btns" style="margin-top:8px"><button class="btn" data-manual="${u.id}">عدّل</button><button class="btn danger" data-rm="${u.id}">حذف</button></div></div>`).join('')}</div>` }) : '',
   ].join('');
 
   view.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => store.removeUnparsed(b.dataset.rm));
   view.querySelectorAll('[data-manual]').forEach((b) => b.onclick = () => {
-    const u = s.unparsed.find((x) => x.id === b.dataset.manual);
-    openAddSheet();
-    const panel = $('.sheet-panel'); panel.querySelector('[data-m="manual"]').click();
-    const m = u.text.match(/\d+(?:[.,]\d+)?/); if (m) $('#m-amount', panel).value = m[0].replace(',', '.');
-    $('#m-merchant', panel).focus();
-    store.removeUnparsed(u.id);
+    openFixSheet(s.unparsed.find((x) => x.id === b.dataset.manual));
   });
   view.querySelectorAll('[data-nick]').forEach((i) => i.onchange = () => { ui.skipRender = true; store.updateCard(i.dataset.nick, { nickname: i.value.trim() }); });
   view.querySelectorAll('[data-hide]').forEach((i) => i.onchange = () => store.updateCard(i.dataset.hide, { hidden: !i.checked }));
@@ -1260,3 +1263,6 @@ ingestFromURL();
 maybeArchive();
 render();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+let sy = 0, sRaf = 0;
+addEventListener('scroll', () => { sy = scrollY; if (!sRaf) sRaf = requestAnimationFrame(() => { sRaf = 0; document.documentElement.style.setProperty('--sy', sy); }); }, { passive: true });
