@@ -685,7 +685,7 @@ function reportSummary(R, salary, daily, hasBudget) {
   return `
     <div class="card hero"><div class="muted small">إجمالي الصرف</div>
       <div class="total">${money(R.total, 0)} <small>ر.س</small></div>
-      ${hasBudget ? `<div class="small muted">${fmt((R.total / salary) * 100)}% من الراتب · ${saved >= 0 ? `تبقّى <b class="good">${money(saved, 0)}</b>` : `تجاوزت الراتب بـ <b class="bad">${money(-saved, 0)}</b>`} ر.س</div>
+      ${hasBudget ? `<div class="small muted"><span class="num m">${fmt((R.total / salary) * 100)}%</span> من الراتب · ${saved >= 0 ? `تبقّى <b class="good">${money(saved, 0)}</b>` : `تجاوزت الراتب بـ <b class="bad">${money(-saved, 0)}</b>`} ر.س</div>
       ${pctBar((R.total / salary) * 100, saved >= 0 ? 'var(--primary)' : 'var(--danger)')}` : ''}
       <div class="stats small">
         <div><b>${money(R.avgPerDay, 0)}</b><span>متوسط يومي</span></div>
@@ -818,7 +818,7 @@ function renderCommitments() {
   const activeN = list.filter(({ st }) => st.active).length;
   const ckey = budget.cycleKey(cyc);
   const body = `<div class="kpis"><div class="kpi" style="--tint:var(--orange)"><span>شهرياً</span><b>${money(total, 0)} <small>ر.س</small></b></div>
-      ${salary > 0 ? `<div class="kpi neutral"><span>من الراتب</span><b>${fmt((total / salary) * 100)}%</b></div>` : ''}
+      ${salary > 0 ? `<div class="kpi neutral"><span>من الراتب</span><b><span class="num m">${fmt((total / salary) * 100)}%</span></b></div>` : ''}
       ${remainingDebt ? `<div class="kpi neutral"><span>باقي أقساط</span><b>${money(remainingDebt, 0)}</b></div>` : ''}</div>
     ${list.length ? `<ul class="list">${list.map(({ c, st }) => {
       const on = st.active && budget.commitmentDone(c, ckey, s.txs, s.commitments, cyc);
@@ -883,7 +883,7 @@ function investmentsSection(cyc) {
   const sent = invs.filter((i) => !i.variable).reduce((a, i) => { const amt = budget.investAmount(i, key); const g = done[i.id] || 0; return a + (budget.investmentDone(i, key, g) ? Math.max(amt, g) : g); }, 0);
   const body = `${invs.length ? `<div class="kpis"><div class="kpi" style="--tint:var(--blue)"><span>المخطط</span><b>${money(planned, 0)} <small>ر.س</small></b></div>
       <div class="kpi" style="--tint:${sent >= planned && planned ? 'var(--good)' : 'var(--text)'}"><span>تحوّل</span><b>${money(sent, 0)} <small>ر.س</small></b></div>
-      ${salary > 0 && planned ? `<div class="kpi neutral"><span>من الراتب</span><b>${fmt((planned / salary) * 100)}%</b></div>` : ''}</div>
+      ${salary > 0 && planned ? `<div class="kpi neutral"><span>من الراتب</span><b><span class="num m">${fmt((planned / salary) * 100)}%</span></b></div>` : ''}</div>
       ${planned ? pctBar(Math.min((sent / planned) * 100, 100), 'var(--blue)') : ''}
       <ul class="list">${invs.map((i) => {
         const amt = budget.investAmount(i, key);
@@ -1166,7 +1166,7 @@ function renderSettings() {
       body: `<div class="sec-title">لون التطبيق</div><div class="swatches">${Object.entries(THEMES).map(([k, t]) =>
         `<button class="sw ${k === theme ? 'active' : ''}" data-theme-set="${k}" style="--c:${t.c}" aria-label="${t.name}">${svg('check', 'f')}</button>`).join('')}</div>
         <div class="sec-title">الوضع</div><div class="seg">${Object.entries(MODES).map(([k, n]) => `<button data-mode-set="${k}" class="${k === mode ? 'active' : ''}">${n}</button>`).join('')}</div>` }),
-    acc('budget', { ico: 'wallet', tint: '#30b158', title: 'الراتب والميزانية', sub: B.salary > 0 ? `<span class="num">${fmt(B.salary, 0)}</span> ر.س · يوم ${B.payday || 27}` : 'ما انضبط للحين', body: budgetBody }),
+    acc('budget', { ico: 'wallet', tint: '#30b158', title: 'الراتب والميزانية', sub: B.salary > 0 ? `<span class="num m">${fmt(B.salary, 0)}</span> ر.س · يوم ${B.payday || 27}` : 'ما انضبط للحين', body: budgetBody }),
     acc('cards', { ico: 'credit-card', tint: '#0a7cff', title: 'البطاقات', sub: cardKeys.length ? `${cardKeys.length} ${cardKeys.length === 1 ? 'بطاقة' : 'بطاقات'}` : 'تنضاف تلقائياً من الرسائل',
       body: cardKeys.length ? `<ul class="list" style="margin-top:8px">${Object.entries(s.cards).map(([k, v]) => { const [b, c] = k.split('|'); return `
         <li class="row" style="cursor:default"><div class="main"><div class="title">${esc(b)} <span class="num">•${esc(c)}</span></div>
