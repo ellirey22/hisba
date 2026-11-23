@@ -475,3 +475,7 @@ body[data-tab="settings"] { --g2: #64748b; --g3: #6366f1; }
 /* وضع الإخفاء: حتى حقول الراتب والادخار تتشفّر (تظهر عند التعديل) */
 html.privacy #b-salary:not(:focus), html.privacy #b-savings:not(:focus), html.privacy #b-daily:not(:focus) { -webkit-text-security: disc; text-security: disc; }
 html.privacy #b-salary::placeholder, html.privacy #b-savings::placeholder, html.privacy #b-daily::placeholder { color: transparent; }
+
+.field-btn { display: block; width: 100%; height: 50px; margin-top: 6px; border: 0; border-radius: 14px; background: var(--fill); color: var(--brand); font-weight: 600; font-size: 16px; }
+.field-btn:active { filter: brightness(.92); }
+#seg-per { margin-bottom: 8px; }

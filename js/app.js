@@ -18,7 +18,7 @@ const CUR_AR = { SAR: 'ر.س', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ' };
 const curLabel = (c) => CUR_AR[c] || c;
 const BASE_URL = location.origin + location.pathname.replace(/index\.html$/, '');
 
-const ui = { tab: 'home', period: 'cycle', offset: 0, card: 'all', q: '', catFilter: 'all', rTab: 'summary', rOffset: 0, openCat: null, acc: {}, allCats: false };
+const ui = { tab: 'home', period: 'cycle', offset: 0, card: 'all', q: '', catFilter: 'all', rTab: 'summary', rPeriod: 'month', rOffset: 0, openCat: null, acc: {}, allCats: false };
 
 /** قسم ينفتح وينغلق: الرأس فيه أيقونة وعنوان وسطر ملخص */
 function acc(key, { ico, tint, title, body }) {
@@ -648,35 +648,59 @@ function renderReports() {
   const hasBudget = b.salary > 0;
   const st0 = hasBudget ? budget.startOf(s) : null;
   const ref = st0 && new Date() < st0 ? st0 : new Date();
-  const range = hasBudget ? budget.cycleFor(ref, payday, ui.rOffset) : periodRange('month', ui.rOffset);
-  const canPrev = !hasBudget || !st0 || budget.cycleFor(ref, payday, ui.rOffset - 1).end > st0;
-  if (!canPrev && ui.rOffset < 0 && range.end <= st0) ui.rOffset++;
-  const snap = s.archive.find((a) => a.start === range.start.toISOString());
+  const per = ui.rPeriod || 'month';
+  const mid = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  let range, canPrev;
+  if (per === 'week') {
+    const start = mid(ref); start.setDate(start.getDate() - start.getDay() + ui.rOffset * 7);
+    const end = new Date(start); end.setDate(end.getDate() + 7);
+    range = { start, end }; canPrev = !st0 || start > st0;
+  } else if (per === 'year') {
+    range = { start: new Date(ref.getFullYear() + ui.rOffset, 0, 1), end: new Date(ref.getFullYear() + ui.rOffset + 1, 0, 1) };
+    canPrev = !st0 || range.start > st0;
+  } else {
+    range = hasBudget ? budget.cycleFor(ref, payday, ui.rOffset) : periodRange('month', ui.rOffset);
+    canPrev = !hasBudget || !st0 || budget.cycleFor(ref, payday, ui.rOffset - 1).end > st0;
+    if (!canPrev && ui.rOffset < 0 && range.end <= st0) ui.rOffset++;
+  }
+  const snap = per === 'month' ? s.archive.find((a) => a.start === range.start.toISOString()) : null;
   const p = budget.plan(s);
   const salary = snap?.salary ?? p?.salary ?? 0;
-  const daily = snap?.daily ?? p?.daily ?? 0;
+  const daily = per === 'year' ? 0 : snap?.daily ?? p?.daily ?? 0;
   const R = budget.cycleReport(s, all, range, daily);
-  const label = `${range.start.getDate()} ${shortMonth.format(range.start)} – ${new Date(range.end - 1).getDate()} ${shortMonth.format(new Date(range.end - 1))} ${range.start.getFullYear()}`;
+  const fullDate = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short' });
+  const label = per === 'year' ? '' : `${range.start.getDate()} ${shortMonth.format(range.start)} – ${new Date(range.end - 1).getDate()} ${shortMonth.format(new Date(range.end - 1))} ${range.start.getFullYear()}`;
   const tabs = { summary: 'التقرير', places: 'وين أصرف', habits: 'عاداتي', archive: 'الأرشيف' };
 
   let body = '';
-  if (ui.rTab === 'summary') body = reportSummary(R, salary, daily, hasBudget);
+  if (ui.rTab === 'summary') body = reportSummary(R, salary, daily, hasBudget && per === 'month');
   else if (ui.rTab === 'places') body = reportPlaces(R);
   else if (ui.rTab === 'habits') body = reportHabits();
   else body = reportArchive(all, hasBudget, payday);
 
+  const PER = { week: 'أسبوعي', month: 'شهري', year: 'سنوي' };
+  const periodTitle = per === 'week' ? `أسبوع <small>${label}</small>` : per === 'year' ? `سنة ${range.start.getFullYear()}` : hasBudget ? `دورة ${monthName(budget.cycleKey(range))}<small>${label}</small>` : label;
   view.innerHTML = `
+    ${['summary', 'places'].includes(ui.rTab) ? `<div class="seg" id="seg-per">${Object.entries(PER).map(([k, n]) => `<button data-rp="${k}" class="${per === k ? 'active' : ''}">${n}</button>`).join('')}</div>` : ''}
     <div class="seg">${Object.entries(tabs).map(([k, n]) => `<button data-rt="${k}" class="${ui.rTab === k ? 'active' : ''}">${n}</button>`).join('')}</div>
     ${['summary', 'places'].includes(ui.rTab) ? `<div class="period"><button id="rprev" aria-label="السابق" ${canPrev ? '' : 'disabled'}>→</button>
-      <span class="label">${hasBudget ? `دورة ${monthName(budget.cycleKey(range))}<small>${label}</small>` : label}</span><button id="rnext" aria-label="التالي" ${ui.rOffset >= 0 ? 'disabled' : ''}>←</button></div>` : ''}
+      <span class="label">${periodTitle}</span><button id="rnext" aria-label="التالي" ${ui.rOffset >= 0 ? 'disabled' : ''}>←</button></div>` : ''}
     ${body}`;
 
+  view.querySelectorAll('[data-rp]').forEach((x) => x.onclick = () => { ui.rPeriod = x.dataset.rp; ui.rOffset = 0; render(); });
   view.querySelectorAll('[data-rt]').forEach((x) => x.onclick = () => { ui.rTab = x.dataset.rt; render(); });
   $('#rprev')?.addEventListener('click', () => { if (canPrev) { ui.rOffset--; render(); } });
   $('#rnext')?.addEventListener('click', () => { if (ui.rOffset < 0) { ui.rOffset++; render(); } });
   if (ui.rTab === 'summary' && R.total) {
-    $('#r-days').appendChild(bars(R.perDay.map((v, i) => ({ value: v, label: String(new Date(range.start.getTime() + i * 864e5).getDate()) })),
-      { labelEvery: 5, limit: daily, highlight: R.perDay.indexOf(Math.max(...R.perDay)) }));
+    const dayAt = (i) => new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate() + i);
+    let series, every = 5;
+    if (per === 'year') {
+      const mo = new Array(12).fill(0); R.perDay.forEach((v, i) => { mo[dayAt(i).getMonth()] += v; });
+      series = mo.map((v, i) => ({ value: v, label: new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { month: 'narrow' }).format(new Date(2026, i, 1)) })); every = 1;
+    } else if (per === 'week') {
+      series = R.perDay.map((v, i) => ({ value: v, label: budget.WEEKDAYS[dayAt(i).getDay()] })); every = 1;
+    } else series = R.perDay.map((v, i) => ({ value: v, label: String(dayAt(i).getDate()) }));
+    $('#r-days').appendChild(bars(series, { labelEvery: every, limit: per === 'year' ? 0 : daily, highlight: series.map((x) => x.value).indexOf(Math.max(...series.map((x) => x.value))) }));
     $('#r-donut').appendChild(donut(R.byCategory.map((c) => ({ value: c.total, color: cat(c.key).color, label: cat(c.key).name })), { center: fmt(R.total, 0), sub: 'ر.س' }));
   }
   view.querySelectorAll('[data-cat-toggle]').forEach((x) => x.onclick = () => { ui.openCat = ui.openCat === x.dataset.catToggle ? null : x.dataset.catToggle; render(); });
@@ -687,7 +711,7 @@ function renderReports() {
 const pctBar = (pct, color = 'var(--primary)') => `<div class="meter thin"><span style="width:${Math.min(pct, 100)}%;background:${color}"></span></div>`;
 
 function reportSummary(R, salary, daily, hasBudget) {
-  if (!R.total) return '<div class="empty"><div class="big">📭</div>ما فيه صرف بهذي الدورة</div>';
+  if (!R.total) return '<div class="empty"><div class="big">📭</div>ما فيه صرف بهذي الفترة</div>';
   const saved = salary - R.total;
   const slotMax = Math.max(...Object.values(R.slots), 1);
   const wdMax = Math.max(...R.weekday, 1);
@@ -1150,7 +1174,7 @@ function renderSettings() {
 
   const budgetBody = `${detected ? `<div class="alert">لقيت إيداع راتب ${money(detected.amount, 0)} ر.س يوم ${detected.day} — <a href="#" id="use-detected">استخدمه</a></div>` : ''}
     <div class="grid2" style="margin-top:12px">
-      <label class="field">الراتب الشهري<input type="text" data-num inputmode="decimal" id="b-salary" value="${B.salary || ''}" placeholder="مثلاً 12000" ${B.salary > 0 ? 'hidden' : ''}>${B.salary > 0 ? '<button type="button" class="btn" id="b-salary-edit">تعديل</button>' : ''}</label>
+      <label class="field">الراتب الشهري<input type="text" data-num inputmode="decimal" id="b-salary" value="${B.salary || ''}" placeholder="مثلاً 12000" ${B.salary > 0 ? 'hidden' : ''}>${B.salary > 0 ? '<button type="button" class="field-btn" id="b-salary-edit">تعديل</button>' : ''}</label>
       <label class="field">يوم نزول الراتب<input type="text" data-num inputmode="numeric" id="b-payday" value="${B.payday || 27}"></label>
       <label class="field">ادخار إضافي شهري<input type="text" data-num inputmode="decimal" id="b-savings" value="${B.savings || ''}" placeholder="0"></label>
       <label class="field">حد يومي ثابت<input type="text" data-num inputmode="decimal" id="b-daily" value="${B.dailyOverride || ''}" placeholder="${TD ? fmt(TD.plan.autoDaily, 0) : 'تلقائي'}"></label>
