@@ -474,3 +474,4 @@ body[data-tab="settings"] { --g2: #64748b; --g3: #6366f1; }
 
 /* وضع الإخفاء: حتى حقول الراتب والادخار تتشفّر (تظهر عند التعديل) */
 html.privacy #b-salary:not(:focus), html.privacy #b-savings:not(:focus), html.privacy #b-daily:not(:focus) { -webkit-text-security: disc; text-security: disc; }
+html.privacy #b-salary::placeholder, html.privacy #b-savings::placeholder, html.privacy #b-daily::placeholder { color: transparent; }

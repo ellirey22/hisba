@@ -39,7 +39,7 @@ const THEMES = { blue: { name: 'أزرق', c: '#0071e3' }, green: { name: 'أخ�
 const MODES = { auto: 'تلقائي', light: 'فاتح', dark: 'داكن' };
 function applyAppearance() {
   const { theme, mode, privacy } = store.getState().settings; const root = document.documentElement;
-  root.classList.toggle('privacy', !!privacy);
+  root.classList.toggle('privacy', !!privacy); if (typeof maskInputs === 'function') maskInputs();
   const eye = document.getElementById('eye-btn'); if (eye) eye.innerHTML = svg(privacy ? 'eye-closed' : 'eye', 'r');
   root.dataset.theme = THEMES[theme] ? theme : 'blue';
   if (mode === 'light' || mode === 'dark') root.dataset.mode = mode; else delete root.dataset.mode;
@@ -47,6 +47,15 @@ function applyAppearance() {
   $('#theme-color').content = dark ? '#000000' : '#f5f5f7';
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyAppearance);
+// iOS ما يطبّق text-security: نحوّل حقول الراتب إلى password وقت الإخفاء (ويرجع نص عند التعديل)
+const SECRET_IN = '#b-salary, #b-savings, #b-daily';
+function maskInputs() {
+  const on = document.documentElement.classList.contains('privacy');
+  document.querySelectorAll(SECRET_IN).forEach((i) => { i.autocomplete = 'off'; i.type = on && document.activeElement !== i ? 'password' : 'text'; });
+}
+document.addEventListener('focusin', (e) => { if (e.target.matches?.(SECRET_IN)) e.target.type = 'text'; });
+document.addEventListener('focusout', (e) => { if (e.target.matches?.(SECRET_IN)) setTimeout(maskInputs, 0); });
+new MutationObserver(maskInputs).observe(document.getElementById('view'), { childList: true, subtree: true });
 
 const greeting = (d = new Date()) => { const h = d.getHours(); return h >= 4 && h < 12 ? 'صباح الخير' : h < 23 && h >= 12 ? 'مساء الخير' : 'ليلتك سعيدة'; };
 const TAB_NAMES = { txs: 'العمليات', reports: 'التقارير', commits: 'الالتزامات', settings: 'الإعدادات' };
