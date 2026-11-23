@@ -9,7 +9,9 @@ const $ = (s, r = document) => r.querySelector(s);
 const view = $('#view');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cat = (k) => CATEGORIES[k] || CATEGORIES.other;
-const money = (n, d = 2) => `<span class="num">${fmt(n, d)}</span>`;
+// المبالغ تنعرض بدقّة: الكسور تظهر (2,500.5) والأرقام الصحيحة بدون أصفار (2,500)
+const moneyFmt = new Intl.NumberFormat('ar-SA-u-nu-latn', { maximumFractionDigits: 2 });
+const money = (n, d = 2) => `<span class="num">${d === 0 ? moneyFmt.format(Math.round(n * 100) / 100) : fmt(n, d)}</span>`;
 const CUR_AR = { SAR: 'ر.س', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ' };
 const curLabel = (c) => CUR_AR[c] || c;
 const BASE_URL = location.origin + location.pathname.replace(/index\.html$/, '');
@@ -26,7 +28,7 @@ const fullFmt = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { dateStyl
 // ---------------- خانات الأرقام: تقبل الأرقام العربية والإنجليزية ----------------
 const toLatinDigits = (v) => String(v)
   .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
-  .replace(/٫/g, '.').replace(/[٬،,\s]/g, '');
+  .replace(/[٫،,]/g, '.').replace(/[٬\s]/g, '');
 document.addEventListener('input', (e) => {
   const el = e.target;
   if (!el.matches?.('[data-num]')) return;
