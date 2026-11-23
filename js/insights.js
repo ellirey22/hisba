@@ -3,7 +3,7 @@ import { normalizeMerchant, KNOWN_SUBSCRIPTION } from './categories.js';
 
 const DAY = 864e5;
 
-export const isExpense = (tx) => tx.type !== 'income' && !tx.excluded;
+export const isExpense = (tx) => tx.type !== 'income' && !tx.excluded && !tx.investmentId;
 
 export function startOfWeek(d) {
   // الأسبوع يبدأ يوم الأحد

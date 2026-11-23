@@ -1,7 +1,7 @@
 // تخزين محلي بالكامل على الجهاز (localStorage) — ما فيه أي خادم ولا حساب
 import { categorize, normalizeMerchant } from './categories.js';
 import { parseSMS } from './parser.js';
-import { matchCommitment, commitmentSignature } from './budget.js';
+import { matchCommitment, matchInvestment, commitmentSignature } from './budget.js';
 
 const KEY = 'hisba.v1';
 
@@ -11,6 +11,7 @@ const defaults = () => ({
   cards: {},          // "البنك|آخر4" ← { nickname, hidden }
   unparsed: [],       // رسائل ما قدر يقرأها، تقدر تضيفها يدوياً
   commitments: [],    // الالتزامات الشهرية: إيجار، فواتير، أقساط تابي/تمارا، قروض
+  investments: [],    // محافظ الاستثمار: مبلغ شهري ثابت + مبالغ مؤقتة لدورات معيّنة، أو حساب متغيّر (أوبشن)
   bucketRules: {},    // اسم التاجر ← daily | monthly (تتعلّمها من اختياراتك)
   archive: [],        // لقطة لكل دورة راتب منتهية (الراتب والحد وقتها)
   seen: [],           // بصمات الرسائل عشان ما تنضاف مرتين
@@ -82,7 +83,9 @@ export function addMessage(text, { sender = '', receivedAt, persist = true } = {
   }
   const { category, source } = categorize(parsed, state.rules);
   const tx = { id: uid(), ...parsed, category, categorySource: source, addedAt: new Date().toISOString() };
-  const linked = matchCommitment(tx, state.commitments);
+  const inv = matchInvestment(tx, state.investments);
+  if (inv) tx.investmentId = inv.id;
+  const linked = !inv && matchCommitment(tx, state.commitments);
   if (linked) tx.commitmentId = linked.id;
   state.txs.push(tx);
   registerCard(tx);
@@ -191,6 +194,57 @@ export function linkCommitmentMessage(commitmentId, text) {
   }
   save();
   return { ok: true, status, tx, linkedOld: n };
+}
+
+// ---------- الاستثمار ----------
+export function saveInvestment(inv) {
+  let saved;
+  if (inv.id) state.investments = state.investments.map((x) => (x.id === inv.id ? (saved = { ...x, ...inv }) : x));
+  else state.investments.push(saved = { overrides: {}, ...inv, id: uid() });
+  save();
+  return saved;
+}
+export function deleteInvestment(id) {
+  state.investments = state.investments.filter((i) => i.id !== id);
+  for (const t of state.txs) if (t.investmentId === id) delete t.investmentId;
+  save();
+}
+
+/** يتعلّم رسالة التحويل لمحفظة، ويسجّل التحويل كاستثمار (مو صرف) */
+export function linkInvestmentMessage(id, text) {
+  const inv = state.investments.find((x) => x.id === id);
+  const clean = String(text || '').trim();
+  if (!inv || !clean) return { ok: false };
+  let tx = state.txs.find((t) => (t.raw || '').trim() === clean);
+  let status = 'existing';
+  if (!tx) {
+    const res = addMessage(clean, { persist: false });
+    if (res.status !== 'added') { save(); return { ok: false, reason: res.status }; }
+    tx = res.tx; status = 'added';
+  }
+  inv.signature = commitmentSignature(tx);
+  inv.sample = clean;
+  delete tx.commitmentId; delete tx.bucket;
+  tx.investmentId = inv.id;
+  let n = 0;
+  for (const t of state.txs) if (t !== tx && !t.investmentId && t.type !== 'income' && matchInvestment(t, [inv])) { t.investmentId = inv.id; delete t.commitmentId; n++; }
+  save();
+  return { ok: true, status, tx, linkedOld: n };
+}
+
+/** كود إعداد يلصقه المستخدم (HISBA-SETUP:...) يضيف/يحدّث المحافظ بالاسم */
+export function applySetup(code) {
+  const m = String(code).trim().match(/^HISBA-SETUP:([A-Za-z0-9+/=_-]+)$/);
+  if (!m) return null;
+  const json = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+  let added = 0, updated = 0;
+  for (const inv of json.investments || []) {
+    const ex = state.investments.find((x) => x.name === inv.name);
+    if (ex) { Object.assign(ex, { amount: inv.amount, variable: !!inv.variable, overrides: inv.overrides || {} }); updated++; }
+    else { state.investments.push({ overrides: {}, ...inv, id: uid() }); added++; }
+  }
+  save();
+  return { added, updated };
 }
 
 export function deleteCommitment(id) { state.commitments = state.commitments.filter((c) => c.id !== id); save(); }

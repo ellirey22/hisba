@@ -21,7 +21,8 @@ export function cycleFor(date = new Date(), payday = 27, offset = 0) {
 
 // ---------------- نوع الصرف لكل عملية ----------------
 // daily = من الحد اليومي · monthly = من ميزانية المشتريات الشهرية · commitment = سداد التزام
-export function counts(tx) { return tx.type !== 'income' && !tx.excluded; }
+// التحويل للاستثمار مو صرف: فلوسك انتقلت من مكان لمكان
+export function counts(tx) { return tx.type !== 'income' && !tx.excluded && !tx.investmentId; }
 
 export function bucketOf(tx, state) {
   if (tx.bucket) return tx.bucket;
@@ -47,9 +48,15 @@ export function commitmentSignature(tx) {
   };
 }
 
-export function matchCommitment(tx, commitments = []) {
+export function matchCommitment(tx, commitments = []) { return matchSignature(tx, commitments, 'commitmentId'); }
+export function matchInvestment(tx, investments = []) {
+  if (tx.type === 'income') return null;
+  return matchSignature(tx, investments, 'investmentId');
+}
+
+function matchSignature(tx, commitments, linkField) {
   if (!commitments.length) return null;
-  if (tx.commitmentId) { const c = commitments.find((x) => x.id === tx.commitmentId); if (c) return c; }
+  if (tx[linkField]) { const c = commitments.find((x) => x.id === tx[linkField]); if (c) return c; }
   const m = normalizeMerchant(tx.merchant);
   const target = tx.raw ? extractTarget(tx.raw) : '';
   for (const c of commitments) {
@@ -105,18 +112,50 @@ export function commitmentsTotal(commitments = [], now = new Date()) {
   return commitments.filter((c) => commitmentStatus(c, now).active).reduce((a, c) => a + (+c.amount || 0), 0);
 }
 
+// ---------------- الاستثمار ----------------
+/** اسم الدورة بالشهر اللي فيه أغلب أيامها (دورة ٢٧ أكتوبر–٢٦ نوفمبر = نوفمبر) */
+export function cycleKey(range) {
+  const mid = new Date(range.start.getTime() + 15 * DAY);
+  return `${mid.getFullYear()}-${String(mid.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** المبلغ المخطط للمحفظة في دورة معيّنة: المبلغ المؤقت لو فيه، وإلا الثابت */
+export function investAmount(inv, key) {
+  if (inv.variable) return 0;
+  const o = inv.overrides?.[key];
+  return o != null && o !== '' ? +o : +inv.amount || 0;
+}
+
+export function investmentsPlanned(investments = [], key) {
+  return investments.reduce((a, inv) => a + investAmount(inv, key), 0);
+}
+
+/** التحويلات الفعلية لكل محفظة في الدورة */
+export function investedInRange(investments = [], txs, range, rates = {}) {
+  const out = Object.fromEntries(investments.map((i) => [i.id, 0]));
+  for (const t of txs) {
+    const d = new Date(t.date);
+    if (d < range.start || d >= range.end || t.type === 'income' || !t.investmentId || !(t.investmentId in out)) continue;
+    out[t.investmentId] += sar(t, rates);
+  }
+  return out;
+}
+
 // ---------------- الخطة والحد اليومي ----------------
 export function plan(state, now = new Date()) {
   const b = state.settings.budget || {};
   if (!(b.salary > 0)) return null;
   const cyc = cycleFor(now, b.payday || 27);
   const commitments = commitmentsTotal(state.commitments, now);
-  const savings = +b.savings || 0;
+  const extraSavings = +b.savings || 0;
+  const investments = investmentsPlanned(state.investments, cycleKey(cyc));
+  const savings = extraSavings + investments;
   const monthlyBudget = +b.monthlyBudget || 0;
   const forDaily = b.salary - commitments - savings - monthlyBudget;
   const autoDaily = Math.max(forDaily / cyc.days, 0);
   const daily = b.dailyOverride > 0 ? +b.dailyOverride : autoDaily;
-  return { ...cyc, salary: +b.salary, commitments, savings, monthlyBudget, forDaily, autoDaily, daily, rollover: b.rollover !== false };
+  return { ...cyc, key: cycleKey(cyc), salary: +b.salary, commitments, savings, extraSavings, investments, monthlyBudget, forDaily, autoDaily, daily,
+    manualDaily: b.dailyOverride > 0, rollover: b.rollover !== false };
 }
 
 /** وضع اليوم: الحد مع الترحيل، اللي انصرف، المتبقي، وكم باقي للدورة */
@@ -138,6 +177,19 @@ export function today(state, txs, now = new Date()) {
     else if (bk === 'monthly') monthlySpent += v;
     else commitmentPaid += v;
   }
+  // تحويلات غير مخططة (مثل حساب الأوبشن): تطلع من الراتب، فتنقص الحد اليومي لباقي الدورة
+  const variableIds = new Set((state.investments || []).filter((i) => i.variable).map((i) => i.id));
+  let unplanned = 0;
+  for (const t of txs) {
+    const d = new Date(t.date);
+    if (d >= p.start && d < p.end && t.type !== 'income' && variableIds.has(t.investmentId)) unplanned += sar(t, rates);
+  }
+  if (unplanned > 0 && !p.manualDaily) {
+    p.forDaily -= unplanned;
+    p.autoDaily = Math.max(p.forDaily / n, 0);
+    p.daily = p.autoDaily;
+  }
+  p.unplanned = unplanned;
   const idx = Math.min(Math.floor((midnight(now) - p.start) / DAY), n - 1);
   const spentBefore = perDay.slice(0, idx).reduce((a, x) => a + x, 0);
   const carry = p.rollover ? p.daily * idx - spentBefore : 0;

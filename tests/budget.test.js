@@ -1,6 +1,6 @@
 // اختبارات الميزانية: الدورة، الحد اليومي والترحيل، الالتزامات، التقارير
 import assert from 'node:assert/strict';
-import { cycleFor, today, commitmentStatus, cycleReport, bucketOf, habits, matchCommitment, commitmentSignature, extractTarget } from '../js/budget.js';
+import { cycleKey, investAmount, investmentsPlanned, cycleFor, today, commitmentStatus, cycleReport, bucketOf, habits, matchCommitment, commitmentSignature, extractTarget } from '../js/budget.js';
 import { parseSMS } from '../js/parser.js';
 
 let pass = 0, fail = 0;
@@ -121,6 +121,37 @@ t('بصمة القرض من المبلغ والبنك', () => {
   assert.equal(matchCommitment(P('خصم قسط تمويل\nمبلغ: SAR 1,830.50\nمن حساب: **2000\nفي: 27-12-2026'), [c])?.id, 'l');
   assert.equal(matchCommitment(P('خصم قسط تمويل\nمبلغ: SAR 900\nمن حساب: **2000'), [c]), null);
   assert.equal(matchCommitment(P('خصم قسط تمويل\nمبلغ: SAR 1,830.50', 'AlRajhiBank'), [c]), null);
+});
+// الاستثمار
+const invs = [
+  { id: 'a', name: 'العالية', amount: 1600, overrides: { '2026-11': 1200, '2026-12': 1200 } },
+  { id: 'b', name: 'المغامرة', amount: 1300, overrides: { '2026-11': 900, '2026-12': 900 } },
+  { id: 'o', name: 'أوبشن', amount: 0, variable: true },
+];
+t('اسم الدورة بالشهر الغالب', () => {
+  assert.equal(cycleKey(cycleFor(D('2026-11-23'), 27)), '2026-11');
+  assert.equal(cycleKey(cycleFor(D('2026-12-05'), 27)), '2026-12');
+  assert.equal(cycleKey(cycleFor(D('2027-01-10'), 27)), '2027-01');
+});
+t('المبالغ المؤقتة لنوفمبر وديسمبر ثم ترجع', () => {
+  assert.equal(investmentsPlanned(invs, '2026-11'), 2100);
+  assert.equal(investmentsPlanned(invs, '2026-12'), 2100);
+  assert.equal(investmentsPlanned(invs, '2027-01'), 2900);
+});
+t('الاستثمار ينخصم قبل الحد اليومي، والتحويلات ما تنحسب صرف', () => {
+  const st = base({ savings: 0, monthlyBudget: 0 }); st.investments = invs;
+  const txs = [{ type: 'transfer', amount: 1200, investmentId: 'a', date: '2026-10-28T10:00:00' }];
+  const r = today(st, txs, D('2026-10-29T12:00'));
+  assert.equal(r.plan.investments, 2100);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100) / 31) < 0.01);
+  assert.equal(r.total, 0);
+});
+t('تحويل الأوبشن ينقص الحد اليومي', () => {
+  const st = base({ savings: 0, monthlyBudget: 0 }); st.investments = invs;
+  const r = today(st, [{ type: 'transfer', amount: 620, investmentId: 'o', date: '2026-10-28T10:00:00' }], D('2026-10-29T12:00'));
+  assert.equal(r.plan.unplanned, 620);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100 - 620) / 31) < 0.01);
+  assert.equal(r.total, 0);
 });
 console.log(`\n${pass}/${pass + fail} نجحت`);
 if (fail) process.exit(1);

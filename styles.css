@@ -173,3 +173,8 @@ details summary { cursor: pointer; font-weight: 700; }
 .alert-card p { margin: 4px 0 8px; }
 .sample-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
 .link-hint { color: var(--primary); font-weight: 600; }
+
+.inv-card .list { margin-top: 6px; }
+.ov-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+.ov-row input { width: 100%; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
+.row .title.wrap { white-space: normal; }

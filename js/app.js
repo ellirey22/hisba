@@ -66,11 +66,23 @@ function ingestFromURL() {
   announce(res);
 }
 
+function trySetup(text) {
+  if (!/^\s*HISBA-SETUP:/.test(text || '')) return false;
+  try {
+    const r = store.applySetup(text);
+    toast(`✅ تم الإعداد: ${r.added} محفظة جديدة${r.updated ? ` و${r.updated} تحدّثت` : ''} — تلقاها في «الالتزامات»`, 6000);
+    ui.tab = 'commits'; syncTabs(); render();
+  } catch { toast('كود الإعداد غير صالح — انسخه كامل'); }
+  return true;
+}
+
 function announce(res) {
   if (res.status === 'added') {
     const t = res.tx, c = cat(t.category);
     const cm = t.commitmentId && store.getState().commitments.find((x) => x.id === t.commitmentId);
-    if (cm) toast(`📌 سداد التزام «${esc(cm.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب من حدك اليومي`);
+    const iv = t.investmentId && store.getState().investments.find((x) => x.id === t.investmentId);
+    if (iv) toast(`📈 تحويل استثمار «${esc(iv.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب صرف${iv.variable ? '، وحدك اليومي اتعدّل' : ''}`, 5000);
+    else if (cm) toast(`📌 سداد التزام «${esc(cm.name)}»: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ما ينحسب من حدك اليومي`);
     else toast(`${c.icon} انضافت: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ${esc(t.merchant || 'بدون اسم')} (${c.name})`);
   } else if (res.status === 'duplicate') toast('هذي الرسالة مضافة من قبل 👌');
   else if (res.status === 'unparsed') toast('ما قدرت أفهم الرسالة، حفظتها في الإعدادات ← «رسائل ما انقرأت»');
@@ -88,6 +100,7 @@ $('#add-btn').addEventListener('click', openAddSheet);
 $('#paste-btn').addEventListener('click', async () => {
   let text = '';
   try { text = await navigator.clipboard.readText(); } catch { /* المستخدم رفض أو المتصفح ما يدعم */ }
+  if (trySetup(text)) return;
   const items = splitBatch(text || '');
   if (!items.length) {
     openAddSheet();
@@ -205,7 +218,7 @@ function txRow(t) {
   const bk = budget.counts(t) && store.getState().settings.budget.salary > 0 ? budget.bucketOf(t, store.getState()) : 'daily';
   return `<li class="row ${t.excluded ? 'excluded' : ''}" data-id="${t.id}">
     <div class="ic" style="background:${c.color}22">${c.icon}</div>
-    <div class="main"><div class="title">${esc(t.merchant || typeLabel(t.type))}${t.confidence === 'low' ? '<span class="badge warn">راجعها</span>' : ''}${bk !== 'daily' ? `<span class="badge">${BUCKETS[bk].short}</span>` : ''}${t.excluded ? '<span class="badge">مستبعدة</span>' : ''}</div>
+    <div class="main"><div class="title">${esc(t.merchant || typeLabel(t.type))}${t.confidence === 'low' ? '<span class="badge warn">راجعها</span>' : ''}${bk !== 'daily' ? `<span class="badge">${BUCKETS[bk].short}</span>` : ''}${t.excluded ? '<span class="badge">مستبعدة</span>' : ''}${t.investmentId ? '<span class="badge">📈 استثمار</span>' : ''}</div>
     <div class="meta">${esc(meta)}</div></div>
     <div class="amt ${t.type === 'income' ? 'income' : ''}">${sign}${money(t.amount)} <span class="small muted">${curLabel(t.currency)}</span></div></li>`;
 }
@@ -325,6 +338,7 @@ function openAddSheet() {
       try { $('#sms-text', p).value = await navigator.clipboard.readText(); } catch { toast('ما قدرت أقرأ الحافظة — الصق يدوياً'); }
     };
     $('#add-sms', p).onclick = () => {
+      if (trySetup($('#sms-text', p).value)) return closeSheet();
       const items = splitBatch($('#sms-text', p).value);
       if (!items.length) return;
       closeSheet();
@@ -445,6 +459,7 @@ function reportSummary(R, salary, daily, hasBudget) {
         <div><b>${R.noSpendDays}</b><span>يوم بدون صرف</span></div>
         ${R.daysOver != null ? `<div><b class="${R.daysOver ? 'bad' : 'good'}">${R.daysOver}</b><span>يوم تجاوزت الحد</span></div>` : ''}
       </div></div>
+    ${invReport(R.range)}
     <div class="card highlight-cards">
       ${R.topDay ? `<div><span class="muted small">🔥 أكثر يوم صرفت فيه</span><b>${dateFmt.format(R.topDay.date)}</b>
         <span>${money(R.topDay.total, 0)} ر.س · <span class="num">${fmt(R.topDay.pct)}%</span> من الدورة</span></div>` : ''}
@@ -466,6 +481,20 @@ function reportSummary(R, salary, daily, hasBudget) {
     }).join('')}</div>
     <div class="card"><h2>🕐 وقت الصرف</h2>${Object.entries(R.slots).map(([n, v]) => `<div class="kv"><span>${n}</span><span>${money(v, 0)} ر.س</span></div>${pctBar((v / slotMax) * 100, 'var(--accent)')}`).join('')}</div>
     <div class="card"><h2>📅 أيام الأسبوع</h2>${budget.WEEKDAYS.map((n, i) => `<div class="kv"><span>${n}</span><span>${money(R.weekday[i], 0)} ر.س</span></div>${pctBar((R.weekday[i] / wdMax) * 100, 'var(--accent)')}`).join('')}</div>`;
+}
+
+function invReport(range) {
+  const s = store.getState();
+  if (!s.investments?.length) return '';
+  const done = budget.investedInRange(s.investments, s.txs, range, s.settings.rates);
+  const key = budget.cycleKey(range);
+  const planned = budget.investmentsPlanned(s.investments, key);
+  const sent = s.investments.filter((i) => !i.variable).reduce((a, i) => a + (done[i.id] || 0), 0);
+  return `<div class="card"><h2>📈 استثمرت هالدورة</h2>
+    <div class="kv"><span>المخطط</span><span>${money(planned, 0)} ر.س</span></div>
+    <div class="kv"><span>المحوّل فعلياً للمحافظ الثابتة</span><b class="${planned && sent >= planned ? 'good' : ''}">${money(sent, 0)} ر.س</b></div>
+    ${s.investments.map((i) => done[i.id] ? `<div class="kv small muted"><span>${i.variable ? '🎲' : '📈'} ${esc(i.name)}</span><span>${money(done[i.id], 0)}</span></div>` : '').join('')}
+    <p class="small muted">التحويلات للاستثمار ما تدخل في إجمالي الصرف.</p></div>`;
 }
 
 function reportPlaces(R) {
@@ -548,6 +577,7 @@ function renderCommitments() {
   const paidOf = (c) => budget.paidInRange(c, s.txs, s.commitments, cyc);
   const needSample = list.filter(({ c, st }) => st.active && !c.signature && !c.keyword);
   view.innerHTML = `
+    ${investmentsSection(cyc)}
     <div class="card hero"><div class="muted small">التزاماتك الشهرية</div>
       <div class="total">${money(total, 0)} <small>ر.س / شهر</small></div>
       ${salary > 0 ? `<div class="small muted"><span class="num">${fmt((total / salary) * 100)}%</span> من راتبك</div>${pctBar((total / salary) * 100, total / salary > 0.5 ? 'var(--danger)' : 'var(--primary)')}` : ''}
@@ -574,6 +604,16 @@ function renderCommitments() {
     ${subs.length ? `<div class="card"><h2>🔁 اشتراكات اكتشفتها</h2>${subs.map((x, i) => `<div class="kv"><span>${esc(x.name)} · ${money(x.amount)} ${curLabel(x.currency)}${x.stale ? ' <span class="badge">يمكن ألغيته؟</span>' : ''}</span>
       <span><button class="chip" data-sub="${i}">إضافة</button> <button class="chip" data-dismiss="${esc(x.key)}">مو اشتراك</button></span></div>`).join('')}</div>` : ''}`;
   $('#add-c').onclick = () => openCommitmentSheet();
+  $('#add-inv').onclick = () => openInvestmentSheet();
+  view.querySelectorAll('[data-inv]').forEach((x) => x.onclick = () => openInvestmentSheet(s.investments.find((i) => i.id === x.dataset.inv)));
+  view.querySelectorAll('[data-inv-link]').forEach((x) => x.onclick = async (e) => {
+    e.stopPropagation();
+    let text = '';
+    try { text = await navigator.clipboard.readText(); } catch { /* */ }
+    const inv = s.investments.find((i) => i.id === x.dataset.invLink);
+    if (!text.trim()) return openInvestmentSheet(inv);
+    linkResult(store.linkInvestmentMessage(inv.id, text), inv);
+  });
   view.querySelectorAll('[data-link]').forEach((x) => x.onclick = async () => {
     let text = '';
     try { text = await navigator.clipboard.readText(); } catch { /* */ }
@@ -592,11 +632,85 @@ function renderCommitments() {
   view.querySelectorAll('[data-dismiss]').forEach((b) => b.onclick = () => store.dismissSub(b.dataset.dismiss));
 }
 
+const monthName = (key) => { const [y, m] = key.split('-'); return monthFmt.format(new Date(+y, +m - 1, 1)); };
+
+function investmentsSection(cyc) {
+  const s = store.getState();
+  const invs = s.investments || [];
+  const key = budget.cycleKey(cyc);
+  const done = budget.investedInRange(invs, s.txs, cyc, s.settings.rates);
+  const planned = budget.investmentsPlanned(invs, key);
+  const sent = invs.filter((i) => !i.variable).reduce((a, i) => a + (done[i.id] || 0), 0);
+  const varSent = invs.filter((i) => i.variable).reduce((a, i) => a + (done[i.id] || 0), 0);
+  return `<div class="card inv-card"><h2>📈 الاستثمار <small>— دورة ${monthName(key)}</small></h2>
+    ${invs.length ? `<div class="kv"><span>المخطط هالدورة</span><b>${money(planned, 0)} ر.س</b></div>
+      <div class="kv"><span>حوّلت فعلياً للمحافظ</span><b class="${sent >= planned && planned ? 'good' : ''}">${money(sent, 0)} ر.س</b></div>
+      ${varSent ? `<div class="kv"><span>🎲 تحويلات متغيّرة (أوبشن)</span><b>${money(varSent, 0)} ر.س</b></div>` : ''}
+      <ul class="list">${invs.map((i) => {
+        const amt = budget.investAmount(i, key);
+        const temp = !i.variable && i.overrides?.[key] != null && +i.overrides[key] !== +i.amount;
+        const got = done[i.id] || 0;
+        return `<li class="row" data-inv="${i.id}"><div class="ic" style="background:var(--track)">${i.variable ? '🎲' : '📈'}</div>
+          <div class="main"><div class="title wrap">${esc(i.name)}${temp ? `<span class="badge warn">مؤقت بدل ${fmt(i.amount)}</span>` : ''}</div>
+          <div class="meta wrap">${i.variable ? `متغيّر — تحويلاته تنقص حدك اليومي${got ? ` · حوّلت هالدورة ${money(got, 0)} ر.س` : ''}`
+            : got >= amt && amt ? `✅ تحوّل هالدورة (${money(got, 0)})` : got ? `حوّلت ${money(got, 0)} من ${money(amt, 0)}` : i.signature ? '⏳ ما وصلت رسالة التحويل هالدورة' : ''}</div>
+          ${!i.signature ? `<button class="chip small" data-inv-link="${i.id}" style="margin-top:4px">📩 لصق رسالة التحويل</button>` : ''}</div>
+          <div class="amt">${i.variable ? '—' : `${money(amt, 0)} ر.س`}</div></li>`;
+      }).join('')}</ul>` : '<p class="small muted">أضف محافظك الاستثمارية: مبلغها ينخصم من الراتب قبل الحد اليومي، وتحويلاتها ما تنحسب صرف.</p>'}
+    <button class="btn block" id="add-inv">＋ إضافة محفظة</button></div>`;
+}
+
+function openInvestmentSheet(inv = {}) {
+  const ov = Object.entries(inv.overrides || {}).sort();
+  const thisKey = budget.cycleKey(budget.cycleFor(new Date(), store.getState().settings.budget.payday || 27));
+  openSheet(`<h3>${inv.id ? 'تعديل محفظة' : 'محفظة جديدة'}</h3>
+    <label class="field">الاسم<input type="text" id="i-name" value="${esc(inv.name || '')}" placeholder="مثلاً: المحفظة التقنية"></label>
+    <label class="switch"><input type="checkbox" id="i-var" ${inv.variable ? 'checked' : ''}> مبلغ متغيّر (مثل حساب الأوبشن): ما له مبلغ ثابت، وكل تحويل له ينقص حدك اليومي لباقي الدورة</label>
+    <div id="i-fixed">
+      <label class="field">المبلغ الشهري الثابت (ر.س)<input type="text" data-num inputmode="decimal" id="i-amount" value="${inv.amount ?? ''}"></label>
+      <label class="field">مبالغ مؤقتة لدورات معيّنة <span class="small">(بعدها يرجع للمبلغ الثابت تلقائياً)</span></label>
+      <div id="i-ov">${ov.map(([k, v]) => ovRow(k, v)).join('')}</div>
+      <button class="btn block" id="i-add-ov" style="margin-top:0">＋ مبلغ مؤقت لدورة</button>
+    </div>
+    <label class="field">رسالة البنك للتحويل لهذي المحفظة <span class="small">(مرة وحدة، وبعدها أتعرّف على التحويلات لحالي)</span>
+      <textarea id="i-sample" dir="auto" style="min-height:80px">${esc(inv.sample || '')}</textarea></label>
+    ${inv.signature ? `<p class="small good" style="margin-top:-4px">✅ متعلّمها${inv.signature.target ? ` — المستفيد •${esc(inv.signature.target)}` : inv.signature.merchant ? ` — ${esc(inv.signature.merchant)}` : ''}</p>` : ''}
+    <button class="btn block" id="i-paste" style="margin-top:0">📋 لصق من الحافظة</button>
+    <button class="btn primary block" id="i-save">حفظ</button>
+    ${inv.id ? '<button class="btn danger block" id="i-del">حذف المحفظة</button>' : ''}`, (p) => {
+    const sync = () => { $('#i-fixed', p).hidden = $('#i-var', p).checked; };
+    $('#i-var', p).onchange = sync; sync();
+    const bindRows = () => p.querySelectorAll('[data-ov-del]').forEach((b) => b.onclick = () => b.closest('.ov-row').remove());
+    bindRows();
+    $('#i-add-ov', p).onclick = () => { $('#i-ov', p).insertAdjacentHTML('beforeend', ovRow(thisKey, '')); bindRows(); };
+    $('#i-paste', p).onclick = async () => { try { $('#i-sample', p).value = await navigator.clipboard.readText(); } catch { toast('الصقها يدوياً'); } };
+    $('#i-save', p).onclick = () => {
+      const name = $('#i-name', p).value.trim();
+      const variable = $('#i-var', p).checked;
+      const amount = parseFloat($('#i-amount', p).value) || 0;
+      if (!name || (!variable && !(amount > 0))) return toast('اكتب الاسم والمبلغ');
+      const overrides = {};
+      p.querySelectorAll('.ov-row').forEach((r) => {
+        const k = r.querySelector('[data-ov-month]').value; const v = parseFloat(r.querySelector('[data-ov-amount]').value);
+        if (/^\d{4}-\d{2}$/.test(k) && v >= 0) overrides[k] = v;
+      });
+      const saved = store.saveInvestment({ id: inv.id, name, variable, amount: variable ? 0 : amount, overrides: variable ? {} : overrides });
+      const sample = $('#i-sample', p).value.trim();
+      closeSheet();
+      if (sample && sample !== (inv.sample || '')) linkResult(store.linkInvestmentMessage(saved.id, sample), saved);
+      else toast('✅ انحفظت المحفظة');
+    };
+    $('#i-del', p)?.addEventListener('click', () => { if (confirm('تحذف المحفظة؟ تحويلاتها السابقة بترجع تنحسب كعمليات عادية.')) { store.deleteInvestment(inv.id); closeSheet(); } });
+  });
+}
+const ovRow = (k, v) => `<div class="ov-row"><input type="month" data-ov-month value="${esc(k)}">
+  <input type="text" data-num inputmode="decimal" data-ov-amount value="${esc(v)}" placeholder="المبلغ"><button class="chip" data-ov-del>✕</button></div>`;
+
 function linkResult(r, c) {
   if (r.ok) {
     const sig = c.signature || {};
     const how = sig.merchant ? `اسم «${esc(r.tx.merchant)}»` : sig.target ? `المستفيد •${sig.target}` : `المبلغ ${fmt(sig.amount)} من ${esc(sig.bank)}`;
-    toast(`✅ تعلّمت رسالة «${esc(c.name)}» — بتعرّف عليها من ${how}${r.status === 'added' ? '، وسجّلت السداد' : ''}${r.linkedOld ? ` وربطت ${r.linkedOld} عمليات سابقة` : ''}`, 6000);
+    toast(`✅ تعلّمت رسالة «${esc(c.name)}» — بتعرّف عليها من ${how}${r.status === 'added' ? (r.tx.investmentId ? '، وسجّلت التحويل (ما ينحسب صرف)' : '، وسجّلت السداد') : ''}${r.linkedOld ? ` وربطت ${r.linkedOld} عمليات سابقة` : ''}`, 6000);
   } else toast(r.reason === 'ignored' ? 'هذي ما تبان رسالة سداد (يمكن رمز تحقق؟) — انسخ رسالة الخصم' : 'ما قدرت أقرأ الرسالة — تأكد إنك نسخت رسالة الخصم كاملة');
 }
 
@@ -654,6 +768,7 @@ function renderSettings() {
   const bRules = Object.entries(s.bucketRules || {});
   const B = s.settings.budget;
   const P = budget.plan(s);
+  const TD = P ? budget.today(s, s.txs) : null;
   const detected = !(B.salary > 0) && budget.detectSalary(s.txs);
   view.innerHTML = `
     <div class="card" id="budget"><h2>💰 الراتب والميزانية</h2>
@@ -661,19 +776,21 @@ function renderSettings() {
       <div class="grid2">
         <label class="field">الراتب الشهري (ر.س)<input type="text" data-num inputmode="decimal" id="b-salary" value="${B.salary || ''}" placeholder="مثلاً 12000"></label>
         <label class="field">يوم نزول الراتب<input type="text" data-num min="1" max="31" inputmode="numeric" id="b-payday" value="${B.payday || 27}"></label>
-        <label class="field">هدف ادخار شهري<input type="text" data-num inputmode="decimal" id="b-savings" value="${B.savings || ''}" placeholder="0"></label>
+        <label class="field">ادخار إضافي شهري <span class="small">(غير الاستثمار)</span><input type="text" data-num inputmode="decimal" id="b-savings" value="${B.savings || ''}" placeholder="0"></label>
         <label class="field">ميزانية مشتريات شهرية<input type="text" data-num inputmode="decimal" id="b-monthly" value="${B.monthlyBudget || ''}" placeholder="0"></label>
       </div>
       <p class="small muted" style="margin-top:-4px">«ميزانية المشتريات الشهرية» للأشياء الكبيرة اللي ما تبغاها تاكل حدك اليومي (ملابس، أجهزة، هدايا…). تختار لكل عملية: يومي أو شهري.</p>
-      <label class="field">الحد اليومي (ر.س) <span class="small">— خلّه فاضي عشان أحسبه تلقائياً${P ? `: <b>${fmt(P.autoDaily, 0)}</b>` : ''}</span>
-        <input type="text" data-num inputmode="decimal" id="b-daily" value="${B.dailyOverride || ''}" placeholder="${P ? fmt(P.autoDaily, 0) : 'تلقائي'}"></label>
+      <label class="field">الحد اليومي (ر.س) <span class="small">— خلّه فاضي عشان أحسبه تلقائياً${TD ? `: <b>${fmt(TD.plan.autoDaily, 0)}</b>` : ''}</span>
+        <input type="text" data-num inputmode="decimal" id="b-daily" value="${B.dailyOverride || ''}" placeholder="${TD ? fmt(TD.plan.autoDaily, 0) : 'تلقائي'}"></label>
       <label class="switch"><input type="checkbox" id="b-roll" ${B.rollover !== false ? 'checked' : ''}> ترحيل الفائض: اللي ما تصرفه اليوم ينضاف لحد بكرة (والتجاوز ينخصم منه)</label>
       ${P ? `<div class="plan small">
         <div class="kv"><span>الراتب</span><span>${money(P.salary, 0)}</span></div>
         <div class="kv"><span>− الالتزامات الشهرية</span><span>${money(P.commitments, 0)}</span></div>
-        <div class="kv"><span>− الادخار</span><span>${money(P.savings, 0)}</span></div>
+        ${P.investments ? `<div class="kv"><span>− الاستثمار (دورة ${monthName(P.key)})</span><span>${money(P.investments, 0)}</span></div>` : ''}
+        ${P.extraSavings ? `<div class="kv"><span>− ادخار إضافي</span><span>${money(P.extraSavings, 0)}</span></div>` : ''}
+        ${TD?.plan.unplanned ? `<div class="kv"><span>− تحويلات متغيّرة هالدورة (أوبشن)</span><span>${money(TD.plan.unplanned, 0)}</span></div>` : ''}
         <div class="kv"><span>− ميزانية المشتريات الشهرية</span><span>${money(P.monthlyBudget, 0)}</span></div>
-        <div class="kv total-line"><span>= للصرف اليومي (${P.days} يوم)</span><span>${money(P.forDaily, 0)} ← ${money(P.autoDaily, 0)}/يوم</span></div>
+        <div class="kv total-line"><span>= للصرف اليومي (${P.days} يوم)</span><span>${money(TD ? TD.plan.forDaily : P.forDaily, 0)} ← ${money(TD ? TD.plan.autoDaily : P.autoDaily, 0)}/يوم</span></div>
         ${P.forDaily < 0 ? '<div class="alert">⚠️ التزاماتك وادخارك أكبر من راتبك — راجع الأرقام</div>' : ''}
       </div>` : ''}
       <button class="btn primary block" id="b-save">حفظ الميزانية</button>
