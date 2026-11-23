@@ -17,7 +17,7 @@ const defaults = () => ({
   bucketRules: {},    // اسم التاجر ← daily | monthly (تتعلّمها من اختياراتك)
   archive: [],        // لقطة لكل دورة راتب منتهية (الراتب والحد وقتها)
   seen: [],           // بصمات الرسائل عشان ما تنضاف مرتين
-  settings: { name: 'آلاء', theme: 'blue', mode: 'auto', budget: { salary: 0, payday: 27, savings: 0, dailyOverride: 0, rollover: true }, rates: { ...DEFAULT_RATES }, ratesUpdated: 0, dismissedSubs: [] },
+  settings: { name: 'آلاء', theme: 'blue', mode: 'auto', privacy: false, budget: { salary: 0, payday: 27, savings: 0, dailyOverride: 0, rollover: true }, rates: { ...DEFAULT_RATES }, ratesUpdated: 0, dismissedSubs: [] },
 });
 
 function mergeSettings(st = {}) {
