@@ -91,8 +91,15 @@ export function addMessage(text, { sender = '', receivedAt, persist = true } = {
   if (dd) { applyDebtLink(tx, dd, 'principal'); dd.principalTxId = tx.id; }
   const inv = !dd && matchInvestment(tx, state.investments);
   if (inv) tx.investmentId = inv.id;
-  const linked = !dd && !inv && matchCommitment(tx, state.commitments);
-  if (linked) tx.commitmentId = linked.id;
+  let linked = !dd && !inv && matchCommitment(tx, state.commitments);
+  // دفعة تابي/تمارا جديدة وما لها التزام: نضيفها تلقائياً كدفعة في الالتزامات
+  if (!linked && !dd && !inv && /tabby|تابي|tamara|تمارا/i.test(`${tx.merchant} ${clean}`) && tx.type !== 'income') {
+    const d = new Date(tx.date), label = /tamara|تمارا/i.test(`${tx.merchant} ${clean}`) ? 'تمارا' : 'تابي';
+    linked = { id: uid(), kind: 'installment', name: tx.merchant || label, amount: tx.amount, day: d.getDate(), provider: label,
+      keyword: normalizeMerchant(tx.merchant) || label.toLowerCase(), approx: false, total: 1, startDate: ymd(d), auto: true };
+    state.commitments.push(linked);
+  }
+  if (linked) { tx.commitmentId = linked.id; tx.bucket = 'commitment'; }
   state.txs.push(tx);
   registerCard(tx);
   if (persist) save();

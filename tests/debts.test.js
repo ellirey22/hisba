@@ -109,3 +109,15 @@ t('حذف عملية ثم إعادة لصقها ينضاف من جديد', () =>
   store.deleteTx(r1.tx.id);
   assert.equal(store.addMessage(msg).status, 'added');
 });
+t('دفعة تابي جديدة تنضاف للالتزامات تلقائياً، والدفعات اللاحقة تنربط بنفس الالتزام', () => {
+  const m = (amt, d) => `شراء من Tabby SAR ${amt}\nعبر6196;فيزا\nلدى:Tabby\nرصيد:100 SR\n${d}`;
+  const before = S().commitments.length;
+  const a = store.addMessage(m('128.75', '26/11/26 11:43'));
+  assert.equal(a.status, 'added');
+  assert.equal(S().commitments.length, before + 1);
+  const c = S().commitments.find((x) => x.auto);
+  assert.equal(a.tx.commitmentId, c.id); assert.equal(a.tx.bucket, 'commitment');
+  const b = store.addMessage(m('99.5', '27/11/26 11:43'));
+  assert.equal(S().commitments.length, before + 1, 'ما ينضاف التزام ثاني');
+  assert.equal(b.tx.commitmentId, c.id);
+});
