@@ -129,6 +129,19 @@ function forget(raw) {
   const drop = new Set([hash(clean), hash(clean + '|')]);
   state.seen = state.seen.filter((h) => !drop.has(h));
 }
+/** يعيد قراءة نص رسالة معدَّل ويحدّث بيانات العملية (يحافظ على التصنيف والربط) */
+export function reparseTx(id, text) {
+  const t = state.txs.find((x) => x.id === id); const clean = String(text || '').trim();
+  if (!t || !clean) return false;
+  const parsed = parseSMS(clean, { sender: t.bank });
+  if (!parsed) return false;
+  forget(t.raw);
+  const keep = parsed.date ? { date: parsed.date } : {};
+  Object.assign(t, { raw: clean, amount: parsed.amount, currency: parsed.currency, type: parsed.type, merchant: parsed.merchant || t.merchant,
+    card: parsed.card || t.card, channel: parsed.channel || t.channel, confidence: 'high', ...keep });
+  state.seen.push(hash(clean), hash(clean + '|'));
+  save(); return true;
+}
 export function deleteTx(id) {
   forget(state.txs.find((x) => x.id === id)?.raw);
   state.txs = state.txs.filter((x) => x.id !== id);

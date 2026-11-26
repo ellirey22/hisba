@@ -528,7 +528,9 @@ function openTxSheet(id) {
         ${st.debts.filter((x) => budget.debtRemaining(x) > 0.004 && x.id !== t.debtId).map((x) => `<option value="d:${x.id}">${x.direction === 'lent' ? 'سداد من' : 'سداد لـ'} ${esc(x.person)} (متبقي ${fmt(budget.debtRemaining(x), 0)})</option>`).join('')}
         ${!t.debtId ? '<option value="new:lent">📤 هذي تسليف جديد</option><option value="new:borrowed">📥 هذي استلاف جديد</option>' : ''}</select></label>` : ''}
     ${t.commitmentId || t.investmentId ? `<button class="btn block" id="e-unlink" style="margin-top:0">فك ربطها بـ«${esc((t.investmentId ? st.investments.find((x) => x.id === t.investmentId) : st.commitments.find((x) => x.id === t.commitmentId))?.name || '—')}»</button>` : ''}
-    ${t.raw ? `<details><summary class="small">نص الرسالة الأصلي</summary><div class="raw" dir="auto">${esc(t.raw)}</div></details>` : ''}
+    ${t.commitmentId && st.commitments.find((x) => x.id === t.commitmentId) ? `<button class="btn block" id="e-editc" style="margin-top:0">✏️ تعديل الالتزام والدفعات</button>` : ''}
+    ${t.raw ? `<details><summary class="small">نص الرسالة (تقدر تعدّله)</summary><textarea id="e-raw" dir="auto" style="margin-top:8px">${esc(t.raw)}</textarea>
+      <button class="btn block" id="e-reparse" style="margin-top:6px">إعادة قراءة الرسالة</button></details>` : ''}
     <button class="btn primary block" id="save">حفظ</button>
     <button class="btn danger block" id="del">حذف العملية</button>`, (p) => {
     p.querySelectorAll('#cat-chips .chip').forEach((b) => b.onclick = () => {
@@ -578,6 +580,10 @@ function openTxSheet(id) {
       }
       closeSheet();
     };
+    $('#e-editc', p)?.addEventListener('click', () => { const c = store.getState().commitments.find((x) => x.id === t.commitmentId); closeSheet(); setTimeout(() => openCommitmentSheet(c), 350); });
+    $('#e-reparse', p)?.addEventListener('click', () => {
+      if (store.reparseTx(id, $('#e-raw', p).value)) { closeSheet(); toast('✅ انقرأت الرسالة المعدّلة'); setTimeout(() => openTxSheet(id), 400); } else toast('ما فهمت الرسالة بعد التعديل');
+    });
     $('#e-unlink', p)?.addEventListener('click', () => { store.unlinkTx(id); closeSheet(); toast('✅ انفكّ الربط، والعملية رجعت تنحسب كصرف عادي'); });
     $('#del', p).onclick = () => { if (confirm('تحذف العملية؟')) { store.deleteTx(id); closeSheet(); } };
   });
