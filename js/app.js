@@ -331,7 +331,7 @@ function renderHome() {
   const s = store.getState();
   const rates = s.settings.rates;
   const all = visibleTxs();
-  if (!s.txs.length) {
+  if (!s.txs.length && !(s.settings.budget.salary > 0)) {
     view.innerHTML = `<div class="empty"><div class="big">🧮</div><h2>جاهز نبدأ؟</h2>
       <p>انسخ أي رسالة من البنك واضغط أيقونة اللصق فوق، وأنا أصنّفها وأحسب لك كل شي.</p></div>`;
     return;
@@ -356,14 +356,14 @@ function renderHome() {
         <div class="main"><div class="title">${cat(c.category).name}</div><div class="meta"><span class="num">${fmt((c.total / catTotal) * 100)}%</span> · ${countOf(c.category)} عمليات</div></div>
         <div class="amt">${money(c.total, 0)}</div></li>`).join('')}</ul>
       ${cats.length > 4 ? `<button class="card-link" id="more-cats">${ui.allCats ? 'عرض أقل' : `عرض الكل (${cats.length})`}</button>` : ''}</div>` : ''}
-    <div class="card"><div class="h2row"><h2>آخر العمليات</h2></div>
+    ${recent.length ? `<div class="card"><div class="h2row"><h2>آخر العمليات</h2></div>
       <ul class="list">${recent.map((t) => txRow(t, { rel: true })).join('')}</ul>
-      <button class="card-link" id="all-tx">كل العمليات</button></div>
+      <button class="card-link" id="all-tx">كل العمليات</button></div>` : ''}
     ${upcomingCard()}`;
 
   $('#go-budget')?.addEventListener('click', () => { ui.tab = 'settings'; ui.acc.budget = true; syncTabs(); render(); scrollTo({ top: 0 }); });
   $('#more-cats')?.addEventListener('click', () => { ui.allCats = !ui.allCats; render(); });
-  $('#all-tx').onclick = () => { ui.tab = 'txs'; ui.catFilter = 'all'; syncTabs(); render(); scrollTo({ top: 0 }); };
+  $('#all-tx')?.addEventListener('click', () => { ui.tab = 'txs'; ui.catFilter = 'all'; syncTabs(); render(); scrollTo({ top: 0 }); });
   view.querySelectorAll('[data-go]').forEach((x) => x.onclick = () => { ui.tab = x.dataset.go; syncTabs(); render(); scrollTo({ top: 0 }); });
   view.querySelectorAll('.row[data-cat]').forEach((li) => li.onclick = () => { ui.catFilter = li.dataset.cat; ui.tab = 'txs'; syncTabs(); render(); scrollTo({ top: 0 }); });
   view.querySelectorAll('.row[data-id]').forEach((r) => r.onclick = () => openTxSheet(r.dataset.id));
