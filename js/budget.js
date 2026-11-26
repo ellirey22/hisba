@@ -274,7 +274,8 @@ export function today(state, txs, now = new Date()) {
   const spentToday = perDay[idx];
   const dailySpent = perDay.reduce((a, x) => a + x, 0);
   const daysLeft = n - idx; // مع اليوم
-  const dailyLeft = p.daily * n - dailySpent;
+  // المتبقي من الدورة: ناقص كل المصاريف فيها (اليومية + من ميزانية الشهر)، والحد اليومي نفسه ما يتغير
+  const dailyLeft = p.daily * n - dailySpent - monthlySpent;
   return {
     plan: p, idx, perDay, carry, allowance, spentToday, remainingToday: allowance - spentToday,
     over: spentToday > allowance, dailySpent, monthlySpent, commitmentPaid, total,

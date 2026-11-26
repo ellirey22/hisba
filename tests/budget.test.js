@@ -202,3 +202,10 @@ t('المتبقي من الشهر: الفواتير من ميزانية الشه
   assert.ok(Math.abs(r.plan.daily - 9000 / 30) < 0.01);
   assert.ok(Math.abs(r.monthRemaining - (10000 - 1000 - 300)) < 0.01, 'monthRemaining ' + r.monthRemaining);
 });
+t('متبقي الدورة ينقص بفاتورة من ميزانية الشهر، والحد اليومي ثابت', () => {
+  const st = base({ savings: 0 });
+  const a = today(st, [], D('2026-10-29T18:00'));
+  const b = today(st, [{ type: 'bill', amount: 16.14, date: '2026-10-28T12:00:00', merchant: 'AMAZON' }], D('2026-10-29T18:00'));
+  assert.ok(Math.abs(a.dailyLeft - b.dailyLeft - 16.14) < 0.01);
+  assert.equal(a.plan.daily, b.plan.daily);
+});
