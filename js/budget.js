@@ -193,25 +193,40 @@ export function investedInRange(investments = [], txs, range, rates = {}) {
 }
 
 // ---------------- الخطة والحد اليومي ----------------
-export function plan(state, now = new Date()) {
+export function plan(state, now = new Date(), allTxs = state.txs || []) {
   const b = state.settings.budget || {};
   if (!(b.salary > 0)) return null;
   const cyc = cycleFor(now, b.payday || 27);
-  const commitments = commitmentsTotal(state.commitments, now);
+  const key = cycleKey(cyc);
+  const commitmentsPlanned = commitmentsTotal(state.commitments, now);
+  const investmentsPlannedTotal = investmentsPlanned(state.investments, key);
+  // الالتزامات والمحافظ تنخصم من الميزانية لما تأكّد سدادها فقط (علامة صح أو عملية مربوطة)
+  const rates = state.settings.rates;
+  const txs = tracked(state, allTxs).filter((t) => { const d = new Date(t.date); return d >= cyc.start && d < cyc.end && !t.excluded; });
+  let commitments = 0;
+  for (const c of state.commitments || []) {
+    const got = txs.filter((t) => matchCommitment(t, state.commitments)?.id === c.id).reduce((a, t) => a + sar(t, rates), 0);
+    commitments += got > 0 ? got : c.paid?.[key] ? +c.amount || 0 : 0;
+  }
+  const gotInv = investedInRange(state.investments, txs, cyc, rates);
+  let investments = 0;
+  for (const i of state.investments || []) {
+    if (i.variable) continue;
+    investments += gotInv[i.id] > 0 ? gotInv[i.id] : i.done?.[key] ? investAmount(i, key) : 0;
+  }
   const extraSavings = +b.savings || 0;
-  const investments = investmentsPlanned(state.investments, cycleKey(cyc));
   const savings = extraSavings + investments;
   const monthlyBudget = 0; // ما فيه ميزانية شهرية للمشتريات: التطبيق يفهم عاداتك من التقارير
   const forDaily = b.salary - commitments - savings - monthlyBudget;
   const autoDaily = Math.max(forDaily / cyc.days, 0);
   const daily = b.dailyOverride > 0 ? +b.dailyOverride : autoDaily;
-  return { ...cyc, key: cycleKey(cyc), salary: +b.salary, commitments, savings, extraSavings, investments, monthlyBudget, forDaily, autoDaily, daily,
+  return { ...cyc, key, salary: +b.salary, commitmentsPlanned, investmentsPlanned: investmentsPlannedTotal, commitments, savings, extraSavings, investments, monthlyBudget, forDaily, autoDaily, daily,
     manualDaily: b.dailyOverride > 0, rollover: b.rollover !== false };
 }
 
 /** وضع اليوم: الحد مع الترحيل، اللي انصرف، المتبقي، وكم باقي للدورة */
 export function today(state, txs, now = new Date()) {
-  const p = plan(state, now);
+  const p = plan(state, now, txs);
   if (!p) return null;
   const st = startOf(state);
   if (st && now < st) {
@@ -236,7 +251,7 @@ export function today(state, txs, now = new Date()) {
       commitmentPaid += v;
       // سداد التزام ما هو ضمن الخطة (قسط قديم، دفعة أخيرة…) ينقص من الحد اليومي
       const mc = matchCommitment(t, state.commitments);
-      if (!mc || !commitmentStatus(mc, p.start).active) unplannedC += v;
+      if (!mc) unplannedC += v;
     }
   }
   // تحويلات غير مخططة (مثل حساب الأوبشن): تطلع من الراتب، فتنقص الحد اليومي لباقي الدورة
@@ -264,7 +279,7 @@ export function today(state, txs, now = new Date()) {
     plan: p, idx, perDay, carry, allowance, spentToday, remainingToday: allowance - spentToday,
     over: spentToday > allowance, dailySpent, monthlySpent, commitmentPaid, total,
     daysLeft, dailyLeft, suggestedDaily: Math.max((dailyLeft + spentToday) / daysLeft, 0),
-    leftOfSalary: p.salary - total - (p.commitments - commitmentPaid > 0 ? p.commitments - commitmentPaid : 0),
+    leftOfSalary: p.salary - total,
     daysOver: perDay.slice(0, idx + 1).filter((x) => x > p.daily).length,
   };
 }

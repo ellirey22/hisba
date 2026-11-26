@@ -55,9 +55,9 @@ t('الحد اليومي التلقائي والترحيل', () => {
   ];
   const r = today(st, txs, D('2026-10-29T18:00'));
   assert.equal(r.plan.days, 30);
-  assert.ok(Math.abs(r.plan.daily - 6300 / 30) < 0.01);
-  assert.ok(Math.abs(r.carry - (2 * 6300 / 30 - 100)) < 0.01, 'carry ' + r.carry);
-  assert.ok(Math.abs(r.remainingToday - (3 * 6300 / 30 - 150)) < 0.01);
+  assert.ok(Math.abs(r.plan.daily - 9000 / 30) < 0.01);
+  assert.ok(Math.abs(r.carry - (2 * 9000 / 30 - 100)) < 0.01, 'carry ' + r.carry);
+  assert.ok(Math.abs(r.remainingToday - (3 * 9000 / 30 - 150)) < 0.01);
   assert.equal(r.monthlySpent, 300);
 });
 t('بدون ترحيل', () => {
@@ -157,17 +157,19 @@ t('الاستثمار ينخصم قبل الحد اليومي، والتحويل
   const st = base({ savings: 0, monthlyBudget: 0 }); st.investments = invs;
   const txs = [{ type: 'transfer', amount: 1200, investmentId: 'a', date: '2026-11-28T10:00:00' }];
   const r = today(st, txs, D('2026-11-29T12:00'));
-  assert.equal(r.plan.investments, 2100);
+  assert.equal(r.plan.investmentsPlanned, 2100);
+  assert.equal(r.plan.investments, 1200); // ينخصم بس اللي تحوّل فعلاً
   assert.equal(r.plan.days, 31);
-  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100) / 31) < 0.01);
-  assert.equal(today(st, [], D('2027-01-28T12:00')).plan.investments, 2900);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 1200) / 31) < 0.01);
+  assert.equal(today(st, [], D('2027-01-28T12:00')).plan.investmentsPlanned, 2900);
+  assert.equal(today(st, [], D('2027-01-28T12:00')).plan.investments, 0);
   assert.equal(r.total, 0);
 });
 t('تحويل الأوبشن ينقص الحد اليومي', () => {
   const st = base({ savings: 0, monthlyBudget: 0 }); st.investments = invs;
   const r = today(st, [{ type: 'transfer', amount: 620, investmentId: 'o', date: '2026-11-28T10:00:00' }], D('2026-11-29T12:00'));
   assert.equal(r.plan.unplanned, 620);
-  assert.ok(Math.abs(r.plan.daily - (10000 - 2700 - 2100 - 620) / 31) < 0.01);
+  assert.ok(Math.abs(r.plan.daily - (10000 - 620) / 31) < 0.01);
   assert.equal(r.total, 0);
 });
 t('قبل بداية الحسبة: انتظار، والعمليات القديمة ما تنحسب', () => {
@@ -182,3 +184,13 @@ t('قبل بداية الحسبة: انتظار، والعمليات القدي�
 });
 console.log(`\n${pass}/${pass + fail} نجحت`);
 if (fail) process.exit(1);
+
+t('الالتزام والمحفظة ينخصمون من الحد بس لما تأكّد السداد', () => {
+  const st = base({ savings: 0 }); st.investments = invs; st.commitments = [{ id: 'k', kind: 'other', name: 'ماما', amount: 2000, day: 1, paid: {} }];
+  const key = '2026-11';
+  assert.equal(today(st, [], D('2026-11-29T12:00')).plan.commitments, 0);
+  st.commitments[0].paid[key] = true; st.investments[0].done = { [key]: true };
+  const p = today(st, [], D('2026-11-29T12:00')).plan;
+  assert.equal(p.commitments, 2000); assert.equal(p.investments, 1200);
+  assert.ok(Math.abs(p.daily - (10000 - 2000 - 1200) / 31) < 0.01);
+});

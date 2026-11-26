@@ -608,7 +608,7 @@ function todayCard() {
     const p = r.plan;
     return `<div class="card hero-card"><div class="hc-label">حدك اليومي</div>
       <div class="hc-amt">${money(p.daily, 0)} <small>ر.س</small></div><span class="hc-pill">${startsIn(r.daysToStart)}</span>
-      <div class="hc-stats"><div><b>${p.days}</b><span>يوم في الدورة</span></div><div><b>${money(p.commitments, 0)}</b><span>التزامات</span></div><div><b>${money(p.investments, 0)}</b><span>استثمار</span></div></div></div>`;
+      <div class="hc-stats"><div><b>${p.days}</b><span>يوم في الدورة</span></div><div><b>${money(p.commitmentsPlanned, 0)}</b><span>التزامات</span></div><div><b>${money(p.investmentsPlanned, 0)}</b><span>استثمار</span></div></div></div>`;
   }
   const p = r.plan;
   const pct = Math.min(Math.max(r.spentToday / Math.max(r.allowance, 1), 0), 1) * 100;
@@ -1202,8 +1202,8 @@ function renderSettings() {
     <label class="switch"><input type="checkbox" id="b-roll" ${B.rollover !== false ? 'checked' : ''}> ترحيل الفائض لليوم الجاي</label>
     ${P ? `<div class="plan small">
       <div class="kv"><span>الراتب</span><span>${money(P.salary, 0)}</span></div>
-      <div class="kv"><span>− الالتزامات</span><span>${money(P.commitments, 0)}</span></div>
-      ${P.investments ? `<div class="kv"><span>− الاستثمار</span><span>${money(P.investments, 0)}</span></div>` : ''}
+      <div class="kv"><span>− الالتزامات المسدّدة</span><span>${money(P.commitments, 0)}</span></div>
+      ${P.investments || P.investmentsPlanned ? `<div class="kv"><span>− الاستثمار المحوَّل</span><span>${money(P.investments, 0)}</span></div>` : ''}
       ${P.extraSavings ? `<div class="kv"><span>− ادخار إضافي</span><span>${money(P.extraSavings, 0)}</span></div>` : ''}
       ${TD?.plan?.unplanned ? `<div class="kv"><span>− تحويلات متغيّرة (أوبشن)</span><span>${money(TD.plan.unplanned, 0)}</span></div>` : ''}
       <div class="kv total-line"><span>للصرف اليومي (${P.days} يوم)</span><span>${money(TD?.plan ? TD.plan.autoDaily : P.autoDaily, 0)} / يوم</span></div>
