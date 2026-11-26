@@ -55,9 +55,9 @@ t('الحد اليومي التلقائي والترحيل', () => {
   ];
   const r = today(st, txs, D('2026-10-29T18:00'));
   assert.equal(r.plan.days, 30);
-  assert.ok(Math.abs(r.plan.daily - 9000 / 30) < 0.01);
-  assert.ok(Math.abs(r.carry - (2 * 9000 / 30 - 100)) < 0.01, 'carry ' + r.carry);
-  assert.ok(Math.abs(r.remainingToday - (3 * 9000 / 30 - 150)) < 0.01);
+  assert.ok(Math.abs(r.plan.daily - 8700 / 30) < 0.01); // الشهري ٣٠٠ ينقص الحد
+  assert.ok(Math.abs(r.carry - (2 * 8700 / 30 - 100)) < 0.01, 'carry ' + r.carry);
+  assert.ok(Math.abs(r.remainingToday - (3 * 8700 / 30 - 150)) < 0.01);
   assert.equal(r.monthlySpent, 300);
 });
 t('بدون ترحيل', () => {
