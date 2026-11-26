@@ -426,7 +426,9 @@ function upcomingCard() {
   const key = budget.cycleKey(cyc);
   for (const i of invs) { const amt = budget.investAmount(i, key); if (!i.variable && amt) { const paid = budget.investmentDone(i, key, done[i.id] || 0); items.push({ ico: '📈', tint: 'var(--blue)', title: i.name, date: null, amount: paid ? amt : amt - (done[i.id] || 0), paid }); } }
   if (!items.length) return '';
-  items.sort((a, b) => (a.paid ? 1 : 0) - (b.paid ? 1 : 0) || (a.date || Infinity) - (b.date || Infinity));
+  // الراتب أول شي، بعده اللي ناقص حسب التاريخ، والمسدّد في الآخر
+  const rank = (x) => (x.income ? 0 : x.paid ? 2 : 1);
+  items.sort((a, b) => rank(a) - rank(b) || (a.date || Infinity) - (b.date || Infinity));
   const accKey = 'upcoming', open = !!ui.acc[accKey];
   return `<section class="acc ${open ? 'open' : ''}" data-acc="${accKey}"><button class="acc-h" aria-expanded="${open}">
     <span class="ic" style="--tint:var(--blue)">${svg('calendar-blank', 'f')}</span><span class="t"><b>الجاي</b></span><span class="chev">${svg('caret-down', 'r')}</span></button>
