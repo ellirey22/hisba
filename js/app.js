@@ -360,7 +360,7 @@ function renderHome() {
     ${recent.length ? `<div class="card"><div class="h2row"><h2>آخر العمليات</h2></div>
       <ul class="list">${recent.map((t) => txRow(t, { rel: true })).join('')}</ul>
       <button class="card-link" id="all-tx">كل العمليات</button></div>` : ''}
-    ${upcomingCard()}`;
+    `;
 
   $('#go-budget')?.addEventListener('click', () => { ui.tab = 'settings'; ui.acc.budget = true; syncTabs(); render(); scrollTo({ top: 0 }); });
   $('#more-cats')?.addEventListener('click', () => { ui.allCats = !ui.allCats; render(); });
@@ -405,36 +405,6 @@ function cycleCard(all) {
     <div class="cyc-legend"><span>صرفت <span class="num">${fmt(pct)}%</span></span><span>مرّ <span class="num">${fmt(pctTime)}%</span> من الدورة</span></div>
     <div class="insight ${ins.cls}">${ins.ico} ${ins.text}</div>
     <div class="bills-row"><span>المتبقي من الشهر</span><span class="${r.monthRemaining < 0 ? 'bad' : ''}">${money(r.monthRemaining, 0)} ر.س</span></div></div>`;
-}
-
-/** الجاي: الراتب والالتزامات والتحويلات اللي باقية في الدورة */
-function upcomingCard() {
-  const s = store.getState();
-  const B = s.settings.budget;
-  const items = [];
-  if (B.salary > 0) items.push({ ico: '💰', tint: 'var(--green)', title: 'الراتب', date: budget.cycleFor(new Date(), B.payday || 27, 1).start, amount: B.salary, income: true });
-  const cyc = B.salary > 0 ? budget.cycleFor(new Date(), B.payday || 27) : periodRange('month', 0);
-  for (const c of s.commitments) {
-    const st = budget.commitmentStatus(c);
-    if (!st.active || !st.next) continue;
-    const paid = budget.commitmentDone(c, budget.cycleKey(cyc), s.txs, s.commitments, cyc);
-    if (!paid && (st.next - new Date()) / 864e5 > 20) continue;
-    items.push({ ico: budget.commitIcon(c), tint: budget.commitTint(c), title: c.name, date: st.next, amount: c.amount, paid });
-  }
-  const invs = s.investments || [];
-  const done = budget.investedInRange(invs, s.txs, cyc, s.settings.rates);
-  const key = budget.cycleKey(cyc);
-  for (const i of invs) { const amt = budget.investAmount(i, key); if (!i.variable && amt) { const paid = budget.investmentDone(i, key, done[i.id] || 0); items.push({ ico: '📈', tint: 'var(--blue)', title: i.name, date: null, amount: paid ? amt : amt - (done[i.id] || 0), paid }); } }
-  if (!items.length) return '';
-  // الراتب أول شي، بعده اللي ناقص حسب التاريخ، والمسدّد في الآخر
-  const rank = (x) => (x.income ? 0 : x.paid ? 2 : 1);
-  items.sort((a, b) => rank(a) - rank(b) || (a.date || Infinity) - (b.date || Infinity));
-  const accKey = 'upcoming', open = !!ui.acc[accKey];
-  return `<section class="acc ${open ? 'open' : ''}" data-acc="${accKey}"><button class="acc-h" aria-expanded="${open}">
-    <span class="ic" style="--tint:var(--blue)">${svg('calendar-blank', 'f')}</span><span class="t"><b>الجاي</b></span><span class="chev">${svg('caret-down', 'r')}</span></button>
-    <div class="acc-b"><div><div class="acc-in"><ul class="list">${items.slice(0, 8).map((x) => `<li class="row ${x.paid ? 'paid' : ''}" data-go="${x.income ? 'settings' : 'commits'}">
-    <div class="ic" style="--tint:${x.tint}">${x.ico}</div><div class="main"><div class="title">${esc(x.title)}</div><div class="meta">${x.paid ? 'تم السداد ✅' : x.date ? relDay(x.date) : 'هالدورة'}</div></div>
-    <div class="amt ${x.income ? 'income' : ''}">${x.income ? '+' : ''}${money(x.amount, 0)}</div></li>`).join('')}</ul></div></div></div></section>`;
 }
 
 function syncTabs() {
