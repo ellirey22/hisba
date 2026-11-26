@@ -195,9 +195,10 @@ t('الالتزام والمحفظة ينخصمون من الحد بس لما ت
   assert.ok(Math.abs(p.daily - (10000 - 2000 - 1200) / 31) < 0.01);
 });
 
-t('حد الفواتير الشهري: يتتبع الفواتير بدون ما ينقص الحد اليومي', () => {
-  const st = base({ monthlyBills: 1000 });
+t('المتبقي من الشهر: الفواتير من ميزانية الشهر تنقص المتبقي، والحد اليومي ما يتغير', () => {
+  const st = base();
   const r = today(st, [{ type: 'bill', amount: 300, date: '2026-10-28T12:00:00', merchant: 'AMAZON' }], D('2026-10-29T18:00'));
-  assert.equal(r.billsBudget, 1000); assert.equal(r.billsLeft, 700); assert.equal(r.monthlySpent, 300);
+  assert.equal(r.monthlySpent, 300);
   assert.ok(Math.abs(r.plan.daily - 9000 / 30) < 0.01);
+  assert.ok(Math.abs(r.monthRemaining - (10000 - 1000 - 300)) < 0.01, 'monthRemaining ' + r.monthRemaining);
 });

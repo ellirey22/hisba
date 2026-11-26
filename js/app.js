@@ -404,8 +404,7 @@ function cycleCard(all) {
     <div class="cbar"><span class="${pct > 100 ? 'over' : ''}" style="width:${Math.min(pct, 100)}%"></span><i style="inset-inline-start:${Math.min(pctTime, 100)}%"></i></div>
     <div class="cyc-legend"><span>صرفت <span class="num">${fmt(pct)}%</span></span><span>مرّ <span class="num">${fmt(pctTime)}%</span> من الدورة</span></div>
     <div class="insight ${ins.cls}">${ins.ico} ${ins.text}</div>
-    ${r.billsBudget > 0 ? `<div class="bills-row"><span>الفواتير والحوالات</span><span><span class="num m">${money(r.monthlySpent, 0)}</span> من ${money(r.billsBudget, 0)} ر.س</span>
-      <div class="meter thin"><span style="width:${Math.min((r.monthlySpent / r.billsBudget) * 100, 100)}%;background:${r.billsLeft < 0 ? 'var(--danger)' : 'var(--primary)'}"></span></div></div>` : ''}</div>`;
+    <div class="bills-row"><span>المتبقي من الشهر</span><span class="${r.monthRemaining < 0 ? 'bad' : ''}">${money(r.monthRemaining, 0)} ر.س</span></div></div>`;
 }
 
 /** الجاي: الراتب والالتزامات والتحويلات اللي باقية في الدورة */
@@ -1216,7 +1215,6 @@ function renderSettings() {
     <div class="grid2" style="margin-top:12px">
       <label class="field">الراتب الشهري<input type="text" data-num inputmode="decimal" id="b-salary" value="${B.salary || ''}" placeholder="مثلاً 12000" ${B.salary > 0 ? 'hidden' : ''}>${B.salary > 0 ? '<button type="button" class="field-btn" id="b-salary-edit">تعديل</button>' : ''}</label>
       <label class="field">يوم نزول الراتب<input type="text" data-num inputmode="numeric" id="b-payday" value="${B.payday || 27}"></label>
-      <label class="field">حد الفواتير والحوالات الشهري<input type="text" data-num inputmode="decimal" id="b-bills" value="${B.monthlyBills || ''}" placeholder="بدون حد"></label>
       <label class="field">ادخار إضافي شهري<input type="text" data-num inputmode="decimal" id="b-savings" value="${B.savings || ''}" placeholder="0"></label>
       <label class="field">حد يومي ثابت<input type="text" data-num inputmode="decimal" id="b-daily" value="${B.dailyOverride || ''}" placeholder="${TD ? fmt(TD.plan.autoDaily, 0) : 'تلقائي'}"></label>
     </div>
@@ -1282,7 +1280,7 @@ function renderSettings() {
   $('#b-save').onclick = () => {
     const payday = Math.min(Math.max(parseInt($('#b-payday').value, 10) || 27, 1), 31);
     ui.skipRender = true;
-    store.updateBudget({ salary: num('#b-salary'), payday, savings: num('#b-savings'), dailyOverride: num('#b-daily'), monthlyBills: num('#b-bills'), rollover: $('#b-roll').checked });
+    store.updateBudget({ salary: num('#b-salary'), payday, savings: num('#b-savings'), dailyOverride: num('#b-daily'), rollover: $('#b-roll').checked });
     maybeArchive(); afterSave('budget', '✅ انحفظت الميزانية');
   };
   $('#csv').onclick = exportCSV;

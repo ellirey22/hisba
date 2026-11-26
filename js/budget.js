@@ -278,7 +278,8 @@ export function today(state, txs, now = new Date()) {
   return {
     plan: p, idx, perDay, carry, allowance, spentToday, remainingToday: allowance - spentToday,
     over: spentToday > allowance, dailySpent, monthlySpent, commitmentPaid, total,
-    billsBudget: +(state.settings.budget.monthlyBills) || 0, billsLeft: (+(state.settings.budget.monthlyBills) || 0) - monthlySpent,
+    // المتبقي من الشهر: الراتب ناقص الالتزامات والادخار والمصاريف كلها (اليومية + من ميزانية الشهر)
+    monthRemaining: p.salary - p.commitments - p.savings - dailySpent - monthlySpent - (p.unplanned || 0),
     daysLeft, dailyLeft, suggestedDaily: Math.max((dailyLeft + spentToday) / daysLeft, 0),
     leftOfSalary: p.salary - total,
     daysOver: perDay.slice(0, idx + 1).filter((x) => x > p.daily).length,
