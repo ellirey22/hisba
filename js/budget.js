@@ -156,8 +156,14 @@ export function cycleKey(range) {
 
 /** تاريخ بداية الحسبة الفعلية: اللي قبله ما يدخل في الميزانية ولا التقارير */
 export function startOf(state) {
-  const s = state.settings?.budget?.startDate;
-  return s ? new Date(`${s}T00:00:00`) : null;
+  const b = state.settings?.budget;
+  const s = b?.startDate;
+  if (!s) return null;
+  const d = new Date(`${s}T00:00:00`);
+  // لو التاريخ المحفوظ هو يوم الراتب الاسمي (مثلاً ٢٧ وهو جمعة) نعتمد يوم النزول الفعلي (الخميس ٢٦)
+  const pay = b.payday || 27;
+  if (d.getDate() === pay) { const act = actualPayday(d.getFullYear(), d.getMonth(), pay); if (act < d) return act; }
+  return d;
 }
 export function tracked(state, txs) {
   const st = startOf(state);

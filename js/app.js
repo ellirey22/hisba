@@ -415,18 +415,18 @@ function upcomingCard() {
   for (const c of s.commitments) {
     const st = budget.commitmentStatus(c);
     if (!st.active || !st.next) continue;
-    if (budget.commitmentDone(c, budget.cycleKey(cyc), s.txs, s.commitments, cyc)) continue;
-    if ((st.next - new Date()) / 864e5 > 20) continue;
-    items.push({ ico: budget.commitIcon(c), tint: budget.commitTint(c), title: c.name, date: st.next, amount: c.amount });
+    const paid = budget.commitmentDone(c, budget.cycleKey(cyc), s.txs, s.commitments, cyc);
+    if (!paid && (st.next - new Date()) / 864e5 > 20) continue;
+    items.push({ ico: budget.commitIcon(c), tint: budget.commitTint(c), title: c.name, date: st.next, amount: c.amount, paid });
   }
   const invs = s.investments || [];
   const done = budget.investedInRange(invs, s.txs, cyc, s.settings.rates);
   const key = budget.cycleKey(cyc);
-  for (const i of invs) { const amt = budget.investAmount(i, key); if (!i.variable && amt && !budget.investmentDone(i, key, done[i.id] || 0)) items.push({ ico: '📈', tint: 'var(--blue)', title: i.name, date: null, amount: amt - (done[i.id] || 0) }); }
+  for (const i of invs) { const amt = budget.investAmount(i, key); if (!i.variable && amt) { const paid = budget.investmentDone(i, key, done[i.id] || 0); items.push({ ico: '📈', tint: 'var(--blue)', title: i.name, date: null, amount: paid ? amt : amt - (done[i.id] || 0), paid }); } }
   if (!items.length) return '';
-  items.sort((a, b) => (a.date || Infinity) - (b.date || Infinity));
-  return `<div class="card"><div class="h2row"><h2>الجاي</h2></div><ul class="list">${items.slice(0, 5).map((x) => `<li class="row" data-go="${x.income ? 'settings' : 'commits'}">
-    <div class="ic" style="--tint:${x.tint}">${x.ico}</div><div class="main"><div class="title">${esc(x.title)}</div><div class="meta">${x.date ? relDay(x.date) : 'هالدورة'}</div></div>
+  items.sort((a, b) => (a.paid ? 1 : 0) - (b.paid ? 1 : 0) || (a.date || Infinity) - (b.date || Infinity));
+  return `<div class="card"><div class="h2row"><h2>الجاي</h2></div><ul class="list">${items.slice(0, 8).map((x) => `<li class="row ${x.paid ? 'paid' : ''}" data-go="${x.income ? 'settings' : 'commits'}">
+    <div class="ic" style="--tint:${x.tint}">${x.ico}</div><div class="main"><div class="title">${esc(x.title)}</div><div class="meta">${x.paid ? 'تم السداد ✅' : x.date ? relDay(x.date) : 'هالدورة'}</div></div>
     <div class="amt ${x.income ? 'income' : ''}">${x.income ? '+' : ''}${money(x.amount, 0)}</div></li>`).join('')}</ul></div>`;
 }
 

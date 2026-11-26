@@ -14,7 +14,7 @@ const out = 'حوالة محلية صادرة\nمن: **2000\nإلى: SA03 8000 0
 const back = 'حوالة واردة\nمن: أبو خالد\nمبلغ: SAR 200\nإيداع في حسابك **2000\nفي: 25-11-2026 10:00';
 
 t('تسليف: العملية تنستبعد من الصرف', () => {
-  const d = store.saveDebt({ direction: 'lent', person: 'أبو خالد', amount: 500, date: new Date().toISOString() });
+  const d = store.saveDebt({ direction: 'lent', person: 'أبو خالد', amount: 500, date: '2026-11-21T12:00:00.000Z' });
   const r = store.debtMessageTx(out); assert.ok(r.ok);
   // التحويل المطابق للدين ينربط ويستبعد تلقائياً بدون ما تلصق شي
   const tx = S().txs.find((x) => x.id === r.tx.id);
