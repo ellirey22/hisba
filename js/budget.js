@@ -256,8 +256,7 @@ export function today(state, txs, now = new Date()) {
   }
   // تحويلات غير مخططة (مثل حساب الأوبشن): تطلع من الراتب، فتنقص الحد اليومي لباقي الدورة
   const variableIds = new Set((state.investments || []).filter((i) => i.variable).map((i) => i.id));
-  // مشتريات «من ميزانية الشهر» (فواتير وحوالات) تنقص الحد اليومي لباقي الدورة مثل ما ينقص الصرف العادي
-  let unplanned = unplannedC + monthlySpent;
+  let unplanned = unplannedC;
   for (const t of txs) {
     const d = new Date(t.date);
     if (d >= p.start && d < p.end && t.type !== 'income' && variableIds.has(t.investmentId)) unplanned += sar(t, rates);
@@ -279,6 +278,7 @@ export function today(state, txs, now = new Date()) {
   return {
     plan: p, idx, perDay, carry, allowance, spentToday, remainingToday: allowance - spentToday,
     over: spentToday > allowance, dailySpent, monthlySpent, commitmentPaid, total,
+    billsBudget: +(state.settings.budget.monthlyBills) || 0, billsLeft: (+(state.settings.budget.monthlyBills) || 0) - monthlySpent,
     daysLeft, dailyLeft, suggestedDaily: Math.max((dailyLeft + spentToday) / daysLeft, 0),
     leftOfSalary: p.salary - total,
     daysOver: perDay.slice(0, idx + 1).filter((x) => x > p.daily).length,

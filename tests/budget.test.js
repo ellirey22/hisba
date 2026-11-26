@@ -55,9 +55,9 @@ t('الحد اليومي التلقائي والترحيل', () => {
   ];
   const r = today(st, txs, D('2026-10-29T18:00'));
   assert.equal(r.plan.days, 30);
-  assert.ok(Math.abs(r.plan.daily - 8700 / 30) < 0.01); // الشهري ٣٠٠ ينقص الحد
-  assert.ok(Math.abs(r.carry - (2 * 8700 / 30 - 100)) < 0.01, 'carry ' + r.carry);
-  assert.ok(Math.abs(r.remainingToday - (3 * 8700 / 30 - 150)) < 0.01);
+  assert.ok(Math.abs(r.plan.daily - 9000 / 30) < 0.01); // الفواتير ما تنقص الحد اليومي
+  assert.ok(Math.abs(r.carry - (2 * 9000 / 30 - 100)) < 0.01, 'carry ' + r.carry);
+  assert.ok(Math.abs(r.remainingToday - (3 * 9000 / 30 - 150)) < 0.01);
   assert.equal(r.monthlySpent, 300);
 });
 t('بدون ترحيل', () => {
@@ -193,4 +193,11 @@ t('الالتزام والمحفظة ينخصمون من الحد بس لما ت
   const p = today(st, [], D('2026-11-29T12:00')).plan;
   assert.equal(p.commitments, 2000); assert.equal(p.investments, 1200);
   assert.ok(Math.abs(p.daily - (10000 - 2000 - 1200) / 31) < 0.01);
+});
+
+t('حد الفواتير الشهري: يتتبع الفواتير بدون ما ينقص الحد اليومي', () => {
+  const st = base({ monthlyBills: 1000 });
+  const r = today(st, [{ type: 'bill', amount: 300, date: '2026-10-28T12:00:00', merchant: 'AMAZON' }], D('2026-10-29T18:00'));
+  assert.equal(r.billsBudget, 1000); assert.equal(r.billsLeft, 700); assert.equal(r.monthlySpent, 300);
+  assert.ok(Math.abs(r.plan.daily - 9000 / 30) < 0.01);
 });
