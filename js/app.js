@@ -429,7 +429,7 @@ function upcomingCard() {
   items.sort((a, b) => (a.paid ? 1 : 0) - (b.paid ? 1 : 0) || (a.date || Infinity) - (b.date || Infinity));
   const accKey = 'upcoming', open = !!ui.acc[accKey];
   return `<section class="acc ${open ? 'open' : ''}" data-acc="${accKey}"><button class="acc-h" aria-expanded="${open}">
-    <span class="ic" style="--tint:var(--blue)">${svg('calendar-blank', 'f')}</span><span class="t"><b>الجاي</b><span>${items.length} ${items.length === 1 ? 'بند' : 'بنود'}</span></span><span class="chev">${svg('caret-down', 'r')}</span></button>
+    <span class="ic" style="--tint:var(--blue)">${svg('calendar-blank', 'f')}</span><span class="t"><b>الجاي</b></span><span class="chev">${svg('caret-down', 'r')}</span></button>
     <div class="acc-b"><div><div class="acc-in"><ul class="list">${items.slice(0, 8).map((x) => `<li class="row ${x.paid ? 'paid' : ''}" data-go="${x.income ? 'settings' : 'commits'}">
     <div class="ic" style="--tint:${x.tint}">${x.ico}</div><div class="main"><div class="title">${esc(x.title)}</div><div class="meta">${x.paid ? 'تم السداد ✅' : x.date ? relDay(x.date) : 'هالدورة'}</div></div>
     <div class="amt ${x.income ? 'income' : ''}">${x.income ? '+' : ''}${money(x.amount, 0)}</div></li>`).join('')}</ul></div></div></div></section>`;
