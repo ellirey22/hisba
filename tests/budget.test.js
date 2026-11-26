@@ -209,3 +209,11 @@ t('متبقي الدورة ينقص بفاتورة من ميزانية الشه�
   assert.ok(Math.abs(a.dailyLeft - b.dailyLeft - 16.14) < 0.01);
   assert.equal(a.plan.daily, b.plan.daily);
 });
+t('دفعة تابي المربوطة بالتزام وهي «شهري» ما تنحسب مرتين', () => {
+  const st = base({ savings: 0 }); st.commitments = [{ id: 'tb', kind: 'installment', name: 'Tabby', amount: 128.75, day: 26, total: 1, startDate: '2026-10-28', keyword: 'tabby', provider: 'تابي' }];
+  const tx = { id: 'x', type: 'purchase', amount: 128.75, date: '2026-10-28T11:00:00', merchant: 'Tabby', commitmentId: 'tb', bucket: 'monthly' };
+  const r = today(st, [tx], D('2026-10-29T18:00'));
+  assert.equal(r.monthlySpent, 0);
+  assert.ok(Math.abs(r.plan.commitments - 128.75) < 0.01);
+  assert.ok(Math.abs(r.dailyLeft - r.plan.daily * r.plan.days) < 0.01, 'dailyLeft ' + r.dailyLeft);
+});

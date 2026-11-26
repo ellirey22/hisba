@@ -245,6 +245,9 @@ export function today(state, txs, now = new Date()) {
     const v = sar(t, rates);
     total += v;
     const bk = bucketOf(t, state);
+    // الدفعة المربوطة بالتزام تنحسب مرة وحدة: من الالتزامات (حتى لو مصنّفة «شهري»)
+    const linked = matchCommitment(t, state.commitments);
+    if (linked && bk !== 'daily') { commitmentPaid += v; continue; }
     if (bk === 'daily') perDay[Math.floor((midnight(d) - p.start) / DAY)] += v;
     else if (bk === 'monthly') monthlySpent += v;
     else {
