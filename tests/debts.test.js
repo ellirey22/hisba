@@ -102,3 +102,10 @@ t('فك ربط عملية بمحفظة يرجّعها صرف عادي', () => {
 });
 console.log(`\n${pass}/${pass + fail} نجحت`);
 if (fail) process.exit(1);
+t('حذف عملية ثم إعادة لصقها ينضاف من جديد', () => {
+  const msg = 'شراء إنترنت بـSR 45 \nعبر6196;فيزا\nلـKUDU\nرصيد:100 SR\n22/11/26 8:38';
+  const r1 = store.addMessage(msg); assert.equal(r1.status, 'added');
+  assert.equal(store.addMessage(msg).status, 'duplicate');
+  store.deleteTx(r1.tx.id);
+  assert.equal(store.addMessage(msg).status, 'added');
+});

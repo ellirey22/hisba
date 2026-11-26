@@ -67,7 +67,9 @@ export function addMessage(text, { sender = '', receivedAt, persist = true } = {
   if (!clean) return { status: 'ignored' };
   const fp = hash(clean + '|' + (receivedAt ? new Date(receivedAt).toISOString().slice(0, 16) : ''));
   const fpText = hash(clean);
-  if (state.seen.includes(fp) || (!receivedAt && state.seen.includes(fpText))) return { status: 'duplicate' };
+  // مكرّرة فقط لو الرسالة فعلاً موجودة عندنا (عملية أو غير مقروءة) — اللي انحذفت من قبل تنضاف من جديد
+  const alive = state.txs.some((t) => (t.raw || '').trim() === clean) || state.unparsed.some((u) => u.text === clean);
+  if ((state.seen.includes(fp) || (!receivedAt && state.seen.includes(fpText))) && (alive || !parseSMS(clean, { sender }))) return { status: 'duplicate' };
 
   const parsed = parseSMS(clean, { sender, receivedAt: receivedAt ? new Date(receivedAt) : undefined });
   state.seen.push(fp, fpText);
@@ -121,7 +123,14 @@ export function updateTx(id, patch) {
   save();
 }
 
+/** ينسى بصمة الرسالة عشان لو حذفتها وأعدت لصقها تنضاف من جديد */
+function forget(raw) {
+  const clean = String(raw || '').trim(); if (!clean) return;
+  const drop = new Set([hash(clean), hash(clean + '|')]);
+  state.seen = state.seen.filter((h) => !drop.has(h));
+}
 export function deleteTx(id) {
+  forget(state.txs.find((x) => x.id === id)?.raw);
   state.txs = state.txs.filter((x) => x.id !== id);
   save();
 }
@@ -160,7 +169,7 @@ export function deleteRule(key) {
 
 export function updateCard(key, patch) { state.cards[key] = { ...state.cards[key], ...patch }; save(); }
 export function updateSettings(patch) { state.settings = { ...state.settings, ...patch }; save(); }
-export function removeUnparsed(id) { state.unparsed = state.unparsed.filter((u) => u.id !== id); save(); }
+export function removeUnparsed(id) { forget(state.unparsed.find((u) => u.id === id)?.text); state.unparsed = state.unparsed.filter((u) => u.id !== id); save(); }
 export function dismissSub(key) { state.settings.dismissedSubs.push(key); save(); }
 
 // ---------- الميزانية والالتزامات ----------
