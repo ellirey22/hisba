@@ -504,7 +504,9 @@ function openTxSheet(id) {
     ${hasBudget && budget.counts(t) ? `<label class="field">تنحسب من</label>
     <div class="chips" id="bk-chips">${Object.entries(BUCKETS).map(([k, b]) =>
       `<button class="chip ${k === curBucket ? 'active' : ''}" data-b="${k}">${b.icon} ${b.name}</button>`).join('')}</div>
-    <label class="switch"><input type="checkbox" id="bk-remember" checked> تذكّر هذا الاختيار لـ«${esc(t.merchant || '—')}»</label>` : ''}
+    <label class="switch"><input type="checkbox" id="bk-remember" checked> تذكّر هذا الاختيار لـ«${esc(t.merchant || '—')}»</label>
+    <div id="cm-wrap" hidden><label class="field">أي التزام؟
+      <select id="e-commit"><option value="">— غير مربوطة —</option>${st.commitments.filter((x) => x.id !== t.commitmentId).map((x) => `<option value="c:${x.id}">${budget.commitIcon(x)} ${esc(x.name)}</option>`).join('')}<option value="new">➕ التزام جديد (تابي، تمارا، قرض…)</option></select></label></div>` : ''}
     <label class="field">اسم التاجر<input type="text" id="e-merchant" value="${esc(t.merchant)}"></label>
     <label class="field">المبلغ (${curLabel(t.currency)})<input type="text" data-num step="0.01" inputmode="decimal" id="e-amount" value="${t.amount}"></label>
     <label class="field">النوع<select id="e-type">${['purchase', 'bill', 'transfer', 'withdrawal', 'income'].map((k) =>
@@ -524,7 +526,9 @@ function openTxSheet(id) {
     });
     p.querySelectorAll('#bk-chips .chip').forEach((b) => b.onclick = () => {
       chosenBucket = b.dataset.b; p.querySelectorAll('#bk-chips .chip').forEach((x) => x.classList.toggle('active', x === b));
+      if ($('#cm-wrap', p)) $('#cm-wrap', p).hidden = chosenBucket !== 'commitment' || !!t.commitmentId;
     });
+    if ($('#cm-wrap', p)) $('#cm-wrap', p).hidden = chosenBucket !== 'commitment' || !!t.commitmentId;
     $('#save', p).onclick = () => {
       const amount = parseFloat($('#e-amount', p).value);
       store.updateTx(id, {
@@ -551,7 +555,15 @@ function openTxSheet(id) {
         const n = store.setBucket(id, chosenBucket, $('#bk-remember', p)?.checked);
         if (n > 1) toast(`✅ عمليات «${esc(t.merchant)}» صارت تنحسب ${BUCKETS[chosenBucket].name}`);
       }
+      const cv = chosenBucket === 'commitment' ? $('#e-commit', p)?.value : '';
+      if (cv?.startsWith('c:')) { store.linkTxCommitment(id, cv.slice(2)); toast('✅ انربطت بالالتزام'); }
       closeSheet();
+      if (cv === 'new') {
+        const cur = store.getState().txs.find((x) => x.id === id);
+        const m = normK(cur.merchant);
+        openCommitmentSheet({ name: cur.merchant || '', amount: cur.amount, day: new Date(cur.date).getDate(), kind: /tabby|تابي|tamara|تمارا/i.test(cur.merchant || '') ? 'installment' : 'other',
+          provider: /tabby|تابي/i.test(m) ? 'تابي' : /tamara|تمارا/i.test(m) ? 'تمارا' : '', keyword: cur.merchant || '' }, false, cur);
+      }
     };
     $('#e-unlink', p)?.addEventListener('click', () => { store.unlinkTx(id); closeSheet(); toast('✅ انفكّ الربط، والعملية رجعت تنحسب كصرف عادي'); });
     $('#del', p).onclick = () => { if (confirm('تحذف العملية؟')) { store.deleteTx(id); closeSheet(); } };
@@ -1120,7 +1132,8 @@ function linkResult(r, c) {
   } else toast(r.reason === 'ignored' ? 'هذي ما تبان رسالة سداد (يمكن رمز تحقق؟) — انسخ رسالة الخصم' : 'ما قدرت أقرأ الرسالة — تأكد إنك نسخت رسالة الخصم كاملة');
 }
 
-function openCommitmentSheet(c = {}, focusSample = false) {
+const normK = (x = '') => String(x);
+function openCommitmentSheet(c = {}, focusSample = false, fromTx = null) {
   const kinds = budget.COMMITMENT_KINDS;
   openSheet(`<h3>${c.id ? 'تعديل التزام' : 'التزام جديد'}</h3>
     <label class="field">النوع<select id="c-kind">${Object.entries(kinds).map(([k, v]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${v.icon} ${v.name}</option>`).join('')}</select></label>
@@ -1129,8 +1142,10 @@ function openCommitmentSheet(c = {}, focusSample = false) {
     <label class="field">يوم الدفع بالشهر<input type="text" data-num min="1" max="31" inputmode="numeric" id="c-day" value="${c.day ?? ''}"></label>
     <div id="c-finite">
       <label class="field">الجهة<select id="c-provider">${['', 'تابي', 'تمارا', 'بنك', 'أخرى'].map((x) => `<option ${c.provider === x ? 'selected' : ''} value="${x}">${x || '—'}</option>`).join('')}</select></label>
-      <label class="field">عدد الأقساط الكلي<input type="text" data-num min="1" inputmode="numeric" id="c-total" value="${c.total ?? ''}"></label>
-      <label class="field">تاريخ أول قسط<input type="date" id="c-start" value="${esc((c.startDate || '').slice(0, 10))}"></label>
+      ${fromTx ? `<label class="field">كم دفعة باقية بعد هذي الدفعة؟ <span class="small">(اكتب 0 لو هذي آخر دفعة)</span><input type="text" data-num min="0" inputmode="numeric" id="c-left" value="0"></label>
+        <label class="field">تاريخ هذي الدفعة<input type="date" id="c-paidon" value="${esc(new Date(fromTx.date).toISOString().slice(0, 10))}"></label>`
+      : `<label class="field">عدد الأقساط الكلي<input type="text" data-num min="1" inputmode="numeric" id="c-total" value="${c.total ?? ''}"></label>
+      <label class="field">تاريخ أول قسط<input type="date" id="c-start" value="${esc((c.startDate || '').slice(0, 10))}"></label>`}
     </div>
     <label class="field">كلمة تظهر في رسالة البنك عند السداد <span class="small">(اختياري: عشان أربط عمليات السداد بهذا الالتزام وما أحسبها من حدك اليومي)</span>
       <input type="text" id="c-key" value="${esc(c.keyword || '')}" placeholder="مثلاً: tabby أو اسم المؤجر"></label>
@@ -1145,14 +1160,18 @@ function openCommitmentSheet(c = {}, focusSample = false) {
       if (!name || !(amount > 0)) return toast('اكتب الاسم والمبلغ');
       const kind = $('#c-kind', p).value;
       const finite = ['installment', 'loan'].includes(kind);
-      const startDate = $('#c-start', p).value;
-      store.saveCommitment({
+      let startDate = $('#c-start', p)?.value || '', totalN = parseInt($('#c-total', p)?.value, 10) || 0;
+      if (fromTx) { // هذي الدفعة = القسط الأول المسجّل، والباقي بعدها
+        startDate = $('#c-paidon', p).value; totalN = 1 + (parseInt($('#c-left', p).value, 10) || 0);
+      }
+      const saved = store.saveCommitment({
         id: c.id, kind, name, amount, keyword: $('#c-key', p).value.trim(), approx: $('#c-approx', p).checked,
         day: parseInt($('#c-day', p).value, 10) || (startDate ? new Date(startDate).getDate() : 1),
-        provider: finite ? $('#c-provider', p).value : '', total: finite ? parseInt($('#c-total', p).value, 10) || 0 : 0,
+        provider: finite ? $('#c-provider', p).value : '', total: finite ? totalN : 0,
         startDate: finite ? startDate : '',
       });
-      closeSheet(); toast('✅ انحفظ الالتزام');
+      if (fromTx) store.linkTxCommitment(fromTx.id, saved.id);
+      closeSheet(); toast(fromTx ? '✅ انحفظ الالتزام وانربطت الدفعة فيه' : '✅ انحفظ الالتزام');
     };
     $('#c-del', p)?.addEventListener('click', () => { if (confirm('تحذف الالتزام؟')) { store.deleteCommitment(c.id); closeSheet(); } });
   });

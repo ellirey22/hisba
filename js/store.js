@@ -357,6 +357,10 @@ export function toggleDebtSettled(id) {
   d.payments = d.payments.filter((p) => !p.settle); save(); return false;
 }
 /** يفك ربط عملية بالتزام/محفظة (من شاشة العملية) */
+export function linkTxCommitment(txId, commitmentId) {
+  const t = state.txs.find((x) => x.id === txId); if (!t) return;
+  t.commitmentId = commitmentId; t.bucket = 'commitment'; save();
+}
 export function unlinkTx(txId) {
   const t = state.txs.find((x) => x.id === txId); if (!t) return;
   if (t.commitmentId && t.bucket === 'commitment') delete t.bucket;

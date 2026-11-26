@@ -222,7 +222,7 @@ export function today(state, txs, now = new Date()) {
   const rates = state.settings.rates;
   const n = p.days;
   const perDay = new Array(n).fill(0);
-  let monthlySpent = 0, commitmentPaid = 0, total = 0;
+  let monthlySpent = 0, commitmentPaid = 0, total = 0, unplannedC = 0;
   for (const t of txs) {
     if (!counts(t)) continue;
     const d = new Date(t.date);
@@ -232,11 +232,16 @@ export function today(state, txs, now = new Date()) {
     const bk = bucketOf(t, state);
     if (bk === 'daily') perDay[Math.floor((midnight(d) - p.start) / DAY)] += v;
     else if (bk === 'monthly') monthlySpent += v;
-    else commitmentPaid += v;
+    else {
+      commitmentPaid += v;
+      // سداد التزام ما هو ضمن الخطة (قسط قديم، دفعة أخيرة…) ينقص من الحد اليومي
+      const mc = matchCommitment(t, state.commitments);
+      if (!mc || !commitmentStatus(mc, p.start).active) unplannedC += v;
+    }
   }
   // تحويلات غير مخططة (مثل حساب الأوبشن): تطلع من الراتب، فتنقص الحد اليومي لباقي الدورة
   const variableIds = new Set((state.investments || []).filter((i) => i.variable).map((i) => i.id));
-  let unplanned = 0;
+  let unplanned = unplannedC;
   for (const t of txs) {
     const d = new Date(t.date);
     if (d >= p.start && d < p.end && t.type !== 'income' && variableIds.has(t.investmentId)) unplanned += sar(t, rates);
