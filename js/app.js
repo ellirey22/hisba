@@ -39,7 +39,6 @@ const THEMES = { blue: { name: 'أزرق', c: '#0071e3' }, green: { name: 'أخ�
 const MODES = { auto: 'تلقائي', light: 'فاتح', dark: 'داكن' };
 function applyAppearance() {
   const { theme, mode, privacy } = store.getState().settings; const root = document.documentElement;
-  root.classList.toggle('shield-on', !!store.getState().settings.shield);
   root.classList.toggle('privacy', !!privacy); if (typeof maskInputs === 'function') maskInputs();
   const eye = document.getElementById('eye-btn'); if (eye) eye.innerHTML = svg(privacy ? 'eye-closed' : 'eye', 'r');
   root.dataset.theme = THEMES[theme] ? theme : 'blue';
@@ -48,17 +47,6 @@ function applyAppearance() {
   $('#theme-color').content = dark ? '#000000' : '#f5f5f7';
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyAppearance);
-// حجب الشاشة: يغطي الشاشة، يظهر المحتوى وإنت ضاغط مطولاً، ودبل ضغطة تطفيه
-{
-  const sh = document.getElementById('shield'); let lastTap = 0;
-  const reveal = (on) => sh.classList.toggle('reveal', on);
-  sh.addEventListener('pointerdown', (e) => {
-    const now = Date.now();
-    if (now - lastTap < 350) { store.updateSettings({ shield: false }); applyAppearance(); lastTap = 0; return; }
-    lastTap = now; reveal(true); e.preventDefault();
-  });
-  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) sh.addEventListener(ev, () => reveal(false));
-}
 // iOS ما يطبّق text-security: نحوّل حقول الراتب إلى password وقت الإخفاء (ويرجع نص عند التعديل)
 const SECRET_IN = '#b-savings, #b-daily';
 function maskInputs() {
@@ -1249,8 +1237,7 @@ function renderSettings() {
     acc('look', { ico: 'paint-brush', tint: '#ff375f', title: 'المظهر', sub: `${THEMES[theme].name} · ${MODES[mode]}`,
       body: `<div class="sec-title">لون التطبيق</div><div class="swatches">${Object.entries(THEMES).map(([k, t]) =>
         `<button class="sw ${k === theme ? 'active' : ''}" data-theme-set="${k}" style="--c:${t.c}" aria-label="${t.name}">${svg('check', 'f')}</button>`).join('')}</div>
-        <div class="sec-title">الوضع</div><div class="seg">${Object.entries(MODES).map(([k, n]) => `<button data-mode-set="${k}" class="${k === mode ? 'active' : ''}">${n}</button>`).join('')}</div>
-        <label class="switch" style="margin-top:14px"><input type="checkbox" id="shield-on" ${s.settings.shield ? 'checked' : ''}> حجب الشاشة (يغطي الشاشة إلا وقت ما تضغط مطولاً)</label>` }),
+        <div class="sec-title">الوضع</div><div class="seg">${Object.entries(MODES).map(([k, n]) => `<button data-mode-set="${k}" class="${k === mode ? 'active' : ''}">${n}</button>`).join('')}</div>` }),
     acc('budget', { ico: 'wallet', tint: '#30b158', title: 'الراتب والميزانية', sub: B.salary > 0 ? `<span class="num m">${fmt(B.salary, 0)}</span> ر.س · يوم ${B.payday || 27}` : 'ما انضبط للحين', body: budgetBody }),
     acc('cards', { ico: 'credit-card', tint: '#0a7cff', title: 'البطاقات', sub: cardKeys.length ? `${cardKeys.length} ${cardKeys.length === 1 ? 'بطاقة' : 'بطاقات'}` : 'تنضاف تلقائياً من الرسائل',
       body: cardKeys.length ? `<ul class="list" style="margin-top:8px">${Object.entries(s.cards).map(([k, v]) => { const [b, c] = k.split('|'); return `
@@ -1285,7 +1272,6 @@ function renderSettings() {
   view.querySelectorAll('[data-brule]').forEach((b) => b.onclick = () => store.deleteBucketRule(b.dataset.brule));
   view.querySelectorAll('[data-theme-set]').forEach((b) => b.onclick = () => store.updateSettings({ theme: b.dataset.themeSet }));
   view.querySelectorAll('[data-mode-set]').forEach((b) => b.onclick = () => store.updateSettings({ mode: b.dataset.modeSet }));
-  $('#shield-on')?.addEventListener('change', (e) => { store.updateSettings({ shield: e.target.checked }); applyAppearance(); });
   const afterSave = (key, msg) => { closeAcc(key); ui.skipRender = true; toast(msg); setTimeout(() => { ui.skipRender = false; render(); }, 480); };
   $('#p-save').onclick = () => { ui.skipRender = true; store.updateSettings({ name: $('#p-name').value.trim() }); updateHeader(); afterSave('profile', '✅ انحفظ'); };
   const num = (id) => { const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : 0; };
