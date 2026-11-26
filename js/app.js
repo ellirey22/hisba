@@ -88,6 +88,7 @@ document.addEventListener('input', (e) => {
 
 // ---------------- Toast & Sheet ----------------
 let toastTimer;
+$('#toast').addEventListener('click', (e) => { const b = e.target.closest('[data-edit-tx]'); if (b) { $('#toast').hidden = true; openTxSheet(b.dataset.editTx); } });
 function toast(msg, ms = 3500) {
   const t = $('#toast');
   t.innerHTML = msg; t.hidden = false;
@@ -236,7 +237,7 @@ function announce(res) {
     else if (t.type === 'purchase' && (!t.merchant || t.categorySource === 'default')) {
       toast(`❓ انضافت <b>${money(t.amount)} ${curLabel(t.currency)}</b> بس ما عرفت وين — حدّد المكان والتصنيف`, 4500);
       setTimeout(() => openTxSheet(t.id), 450);
-    } else toast(`${c.icon} انضافت: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ${esc(t.merchant || 'بدون اسم')} (${c.name})`);
+    } else toast(`${c.icon} انضافت: <b>${money(t.amount)} ${curLabel(t.currency)}</b> — ${esc(t.merchant || 'بدون اسم')} (${c.name}) <button class="tact" data-edit-tx="${t.id}">تعديل</button>`, 6000);
   } else if (res.status === 'duplicate') toast('هذي الرسالة مضافة من قبل 👌');
   else if (res.status === 'unparsed') { toast('ما فهمت الرسالة — عدّلها وأنا أحفظها'); const u = store.getState().unparsed[0]; if (u) setTimeout(() => openFixSheet(u), 350); }
   else toast('الرسالة مو عملية مالية (رمز تحقق أو عملية مرفوضة) — تم تجاهلها');
@@ -473,10 +474,14 @@ function renderTxs() {
       <select id="cat-f"><option value="all">كل التصنيفات</option>${Object.entries(CATEGORIES).map(([k, c]) =>
         `<option value="${k}" ${ui.catFilter === k ? 'selected' : ''}>${c.icon} ${c.name}</option>`).join('')}</select></div>
     ${s.unparsed.length ? `<div class="card small" id="unparsed-note">⚠️ فيه <b>${s.unparsed.length}</b> رسالة ما قدرت أقراها — <a href="#" id="go-unparsed">راجعها</a></div>` : ''}
-    ${groups.length ? groups.map((g) => {
+    ${groups.length ? groups.map((g, gi) => {
       const dayTotal = g.items.filter(isExpense).reduce((a, t) => a + sar(t, s.settings.rates), 0);
-      return `<div class="day-head"><span>${dateFmt.format(g.d)}</span><span>${money(dayTotal, 0)} ر.س</span></div>
-      <div class="card" style="padding:4px 14px"><ul class="list">${g.items.map(txRow).join('')}</ul></div>`;
+      const key = `day:${g.k}`;
+      const open = ui.q || ui.catFilter !== 'all' ? true : ui.acc[key] ?? gi === 0;
+      return `<section class="acc day-acc ${open ? 'open' : ''}" data-acc="${key}"><button class="acc-h" aria-expanded="${open}">
+        <span class="t"><b>${dateFmt.format(g.d)}</b><span>${g.items.length} عملية</span></span>
+        <span class="day-sum">${money(dayTotal, 0)} ر.س</span><span class="chev">${svg('caret-down', 'r')}</span></button>
+        <div class="acc-b"><div><div class="acc-in"><ul class="list">${g.items.map(txRow).join('')}</ul></div></div></div></section>`;
     }).join('') : '<div class="empty"><div class="big">🔍</div>ما فيه عمليات</div>'}`;
 
   const q = $('#q');
@@ -506,7 +511,12 @@ function openTxSheet(id) {
       `<button class="chip ${k === curBucket ? 'active' : ''}" data-b="${k}">${b.icon} ${b.name}</button>`).join('')}</div>
     <label class="switch"><input type="checkbox" id="bk-remember" checked> تذكّر هذا الاختيار لـ«${esc(t.merchant || '—')}»</label>
     <div id="cm-wrap" hidden><label class="field">أي التزام؟
-      <select id="e-commit"><option value="">— غير مربوطة —</option>${st.commitments.filter((x) => x.id !== t.commitmentId).map((x) => `<option value="c:${x.id}">${budget.commitIcon(x)} ${esc(x.name)}</option>`).join('')}<option value="new">➕ التزام جديد (تابي، تمارا، قرض…)</option></select></label></div>` : ''}
+      <select id="e-commit"><option value="">— غير مربوطة —</option>${st.commitments.filter((x) => x.id !== t.commitmentId).map((x) => `<option value="c:${x.id}">${budget.commitIcon(x)} ${esc(x.name)}</option>`).join('')}<option value="new">➕ التزام جديد (تابي، تمارا، قرض…)</option></select></label>
+      <div id="nc-wrap" hidden>
+        <label class="field">نوع الالتزام<select id="nc-kind">${['installment', 'loan', 'subscription', 'other'].map((k) => `<option value="${k}" ${k === (/tabby|تابي|tamara|تمارا/i.test(t.merchant || '') ? 'installment' : 'installment') ? 'selected' : ''}>${budget.COMMITMENT_KINDS[k].icon} ${budget.COMMITMENT_KINDS[k].name}</option>`).join('')}</select></label>
+        <div id="nc-fin"><label class="field">الجهة<select id="nc-prov">${['', 'تابي', 'تمارا', 'بنك', 'أخرى'].map((x) => `<option value="${x}" ${x === (/tabby|تابي/i.test(t.merchant || '') ? 'تابي' : /tamara|تمارا/i.test(t.merchant || '') ? 'تمارا' : '') ? 'selected' : ''}>${x || '—'}</option>`).join('')}</select></label>
+        <label class="field">كم دفعة باقية بعد هذي الدفعة؟ <span class="small">(اكتب 0 لو هذي آخر دفعة)</span><input type="text" data-num inputmode="numeric" id="nc-left" value="0"></label></div>
+      </div></div>` : ''}
     <label class="field">اسم التاجر<input type="text" id="e-merchant" value="${esc(t.merchant)}"></label>
     <label class="field">المبلغ (${curLabel(t.currency)})<input type="text" data-num step="0.01" inputmode="decimal" id="e-amount" value="${t.amount}"></label>
     <label class="field">النوع<select id="e-type">${['purchase', 'bill', 'transfer', 'withdrawal', 'income'].map((k) =>
@@ -528,6 +538,8 @@ function openTxSheet(id) {
       chosenBucket = b.dataset.b; p.querySelectorAll('#bk-chips .chip').forEach((x) => x.classList.toggle('active', x === b));
       if ($('#cm-wrap', p)) $('#cm-wrap', p).hidden = chosenBucket !== 'commitment' || !!t.commitmentId;
     });
+    const ncSync = () => { const nw = $('#nc-wrap', p); if (!nw) return; nw.hidden = $('#e-commit', p).value !== 'new'; $('#nc-fin', p).hidden = !['installment', 'loan'].includes($('#nc-kind', p).value); };
+    $('#e-commit', p)?.addEventListener('change', ncSync); $('#nc-kind', p)?.addEventListener('change', ncSync); ncSync();
     if ($('#cm-wrap', p)) $('#cm-wrap', p).hidden = chosenBucket !== 'commitment' || !!t.commitmentId;
     $('#save', p).onclick = () => {
       const amount = parseFloat($('#e-amount', p).value);
@@ -557,13 +569,14 @@ function openTxSheet(id) {
       }
       const cv = chosenBucket === 'commitment' ? $('#e-commit', p)?.value : '';
       if (cv?.startsWith('c:')) { store.linkTxCommitment(id, cv.slice(2)); toast('✅ انربطت بالالتزام'); }
-      closeSheet();
       if (cv === 'new') {
         const cur = store.getState().txs.find((x) => x.id === id);
-        const m = normK(cur.merchant);
-        openCommitmentSheet({ name: cur.merchant || '', amount: cur.amount, day: new Date(cur.date).getDate(), kind: /tabby|تابي|tamara|تمارا/i.test(cur.merchant || '') ? 'installment' : 'other',
-          provider: /tabby|تابي/i.test(m) ? 'تابي' : /tamara|تمارا/i.test(m) ? 'تمارا' : '', keyword: cur.merchant || '' }, false, cur);
+        const kind = $('#nc-kind', p).value, finite = ['installment', 'loan'].includes(kind);
+        const c = store.saveCommitment({ kind, name: cur.merchant || 'التزام', amount: cur.amount, day: new Date(cur.date).getDate(), keyword: cur.merchant || '', approx: false,
+          provider: finite ? $('#nc-prov', p).value : '', total: finite ? 1 + (parseInt($('#nc-left', p).value, 10) || 0) : 0, startDate: finite ? new Date(cur.date).toISOString().slice(0, 10) : '' });
+        store.linkTxCommitment(id, c.id); toast(finite && c.total > 1 ? `✅ انحفظ الالتزام — باقي ${c.total - 1} دفعات` : '✅ انحفظ الالتزام وانربطت الدفعة فيه');
       }
+      closeSheet();
     };
     $('#e-unlink', p)?.addEventListener('click', () => { store.unlinkTx(id); closeSheet(); toast('✅ انفكّ الربط، والعملية رجعت تنحسب كصرف عادي'); });
     $('#del', p).onclick = () => { if (confirm('تحذف العملية؟')) { store.deleteTx(id); closeSheet(); } };
