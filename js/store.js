@@ -1,7 +1,7 @@
 // تخزين محلي بالكامل على الجهاز (localStorage) — ما فيه أي خادم ولا حساب
 import { categorize, normalizeMerchant } from './categories.js';
 import { parseSMS } from './parser.js';
-import { matchCommitment, matchInvestment, commitmentSignature, cycleFor } from './budget.js';
+import { matchCommitment, matchInvestment, commitmentSignature, cycleFor, commitmentStatus } from './budget.js';
 import { DEFAULT_RATES } from './rates.js';
 
 const KEY = 'hisba.v1';
@@ -376,7 +376,18 @@ export function deleteDebtPayment(debtId, paymentId) {
 
 // ---------- علامات «تم» لكل دورة ----------
 const flip = (obj, key) => { const o = { ...(obj || {}) }; if (o[key]) delete o[key]; else o[key] = true; return o; };
-export function toggleCommitmentPaid(id, key) { const c = state.commitments.find((x) => x.id === id); if (c) { c.paid = flip(c.paid, key); save(); } }
+/** علامة السداد: للالتزامات المقسّطة تزيد عدد الدفعات المسدّدة (حتى قبل الموعد)، والإلغاء يرجعها */
+export function toggleCommitmentPaid(id, key) {
+  const c = state.commitments.find((x) => x.id === id); if (!c) return;
+  const on = !c.paid?.[key];
+  c.paid = flip(c.paid, key);
+  if (c.total > 0 && c.startDate && (c.kind === 'installment' || c.kind === 'loan')) {
+    const st = commitmentStatus({ ...c, manualPaid: 0 });
+    const byDate = st.paid ?? 0;
+    c.manualPaid = on ? Math.min(c.total, Math.max(byDate, c.manualPaid || 0) + 1) : Math.max(byDate, (c.manualPaid || 0) - 1);
+  }
+  save();
+}
 export function toggleInvestmentDone(id, key) { const i = state.investments.find((x) => x.id === id); if (i) { i.done = flip(i.done, key); save(); } }
 /** تسوية الدين بالكامل بضغطة، والضغطة الثانية تلغيها */
 export function toggleDebtSettled(id) {

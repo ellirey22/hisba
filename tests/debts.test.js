@@ -3,7 +3,7 @@ const mem = {};
 globalThis.localStorage = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => { mem[k] = v; } };
 import assert from 'node:assert/strict';
 const store = await import('../js/store.js');
-const { debtSummary, debtRemaining, counts } = await import('../js/budget.js');
+const { debtSummary, debtRemaining, counts, commitmentStatus } = await import('../js/budget.js');
 const { isExpense } = await import('../js/insights.js');
 
 let pass = 0, fail = 0;
@@ -120,4 +120,13 @@ t('دفعة تابي جديدة تنضاف للالتزامات تلقائياً
   const b = store.addMessage(m('99.5', '27/11/26 11:43'));
   assert.equal(S().commitments.length, before + 1, 'ما ينضاف التزام ثاني');
   assert.equal(b.tx.commitmentId, c.id);
+});
+t('سداد قسط مبكر يزيد المسدّد ويقلّل الباقي، والآخر يخلّص الالتزام', () => {
+  const c = store.saveCommitment({ kind: 'installment', name: 'تمارا-اختبار', amount: 100, day: 1, total: 3, startDate: '2026-11-01', keyword: 'tmarat-test' });
+  const before = commitmentStatus(S().commitments.find((x) => x.id === c.id));
+  store.toggleCommitmentPaid(c.id, '2026-11');
+  const mid = commitmentStatus(S().commitments.find((x) => x.id === c.id));
+  assert.equal(mid.remaining, before.remaining - 1);
+  store.toggleCommitmentPaid(c.id, '2026-11');
+  assert.equal(commitmentStatus(S().commitments.find((x) => x.id === c.id)).remaining, before.remaining);
 });

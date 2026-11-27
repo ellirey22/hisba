@@ -114,11 +114,13 @@ export function commitmentStatus(c, now = new Date()) {
   const finite = (c.kind === 'installment' || c.kind === 'loan') && c.total > 0 && c.startDate;
   if (!finite) return { active: true, next, paid: null, remaining: null, remainingAmount: null };
   const s = new Date(c.startDate);
-  let paid = 0;
+  let byDate = 0;
   for (let i = 0; i < c.total; i++) {
     const due = new Date(s.getFullYear(), s.getMonth() + i, Math.min(s.getDate(), dim(s.getFullYear(), s.getMonth() + i)));
-    if (due <= today) paid++;
+    if (due <= today) byDate++;
   }
+  // الدفعات اللي سددتها بعلامة صح (حتى قبل موعدها) تنحسب، ولا تنعد مرتين لما يجي موعدها
+  const paid = Math.min(c.total, Math.max(byDate, c.manualPaid || 0));
   const remaining = c.total - paid;
   const last = new Date(s.getFullYear(), s.getMonth() + c.total - 1, s.getDate());
   const nextDue = remaining > 0 ? new Date(s.getFullYear(), s.getMonth() + paid, Math.min(s.getDate(), dim(s.getFullYear(), s.getMonth() + paid))) : null;
